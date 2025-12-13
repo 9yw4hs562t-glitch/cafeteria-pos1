@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cafeteria POS</title>
+<meta name="theme-color" content="#222">
+<style>
+body{margin:0;font-family:Arial;background:#f4f4f4}
+header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
+.container{padding:10px}
+.products{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.product{background:#fff;padding:15px;text-align:center;border-radius:8px;
+box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold;font-size:16px}
+.cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
+.cart-item{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:4px 0}
+button{width:100%;padding:12px;margin-top:8px;border:none;border-radius:6px;font-size:16px;color:#fff}
+.green{background:#28a745}
+.red{background:#dc3545}
+.blue{background:#007bff}
+.gray{background:#6c757d}
+select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<header>📊 Cafeteria POS</header>
+
+<div class="container">
+
+<div class="panel">
+<b>Worker</b>
+<select id="worker">
+<option>Admin 1</option>
+<option>Admin 2</option>
+<option>Admin 3</option>
+<option>Admin 4</option>
+<option>Admin 5</option>
+<option>Admin 6</option>
+<option>Admin 7</option>
+</select>
+
+<b>Shift</b>
+<select id="shift">
+<option>Morning</option>
+<option>Evening</option>
+</select>
+</div>
+
+<h3>Products</h3>
+<button class="blue" onclick="addProduct()">➕ Add Product</button>
+
+<div class="products" id="products"></div>
+
+<div class="cart">
+<h3>Current Order</h3>
+<div id="cartItems"></div>
+<b>Total: <span id="total">0</span> DA</b>
+<button class="green" onclick="checkout()">✔ Validate Order</button>
+<button class="red" onclick="clearCart()">✖ Clear</button>
+</div>
+
+<div class="panel">
+<input type="password" id="pin" placeholder="Admin PIN">
+<button class="gray" onclick="openAdmin()">🔐 Admin</button>
+
+<div id="admin" class="hidden">
+<button class="gray" onclick="dailyReset()">🔄 Daily Reset</button>
+<button class="gray" onclick="exportCSV()">📥 Export CSV</button>
+<div id="reports"></div>
+</div>
+</div>
+
+</div>
+
+<script>
+const ADMIN_PIN = "1234";
+let cart = [];
+
+let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [
+  30,40,50,60,70,80,100,120,200
+];
+
+const productsDiv = document.getElementById("products");
+
+function saveProducts(){
+  localStorage.setItem("products", JSON.stringify(PRODUCTS));
+}
+
+function renderProducts(){
+  productsDiv.innerHTML = "";
+  PRODUCTS.forEach(p=>{
+    let d=document.createElement("div");
+    d.className="product";
+    d.innerText=p+" DA";
+    d.onclick=()=>{cart.push(p);renderCart()};
+    productsDiv.appendChild(d);
+  });
+}
+
+renderProducts();
+
+function addProduct(){
+  let price = prompt("Enter product price (DA):");
+  if(!price) return;
+  price = parseInt(price);
+  if(isNaN(price) || price<=0) return alert("Invalid price");
+  if(PRODUCTS.includes(price)) return alert("Product already exists");
+  PRODUCTS.push(price);
+  PRODUCTS.sort((a,b)=>a-b);
+  saveProducts();
+  renderProducts();
+}
+
+function renderCart(){
+  let c=document.getElementById("cartItems");
+  c.innerHTML="";
+  let t=0;
+  cart.forEach((p,i)=>{
+    t+=p;
+    let d=document.createElement("div");
+    d.className="cart-item";
+    d.innerHTML=`${p} DA <span style='color:red' onclick='removeItem(${i})'>✖</span>`;
+    c.appendChild(d);
+  });
+  document.getElementById("total").innerText=t;
+}
+
+function removeItem(i){cart.splice(i,1);renderCart()}
+function clearCart(){cart=[];renderCart()}
+
+function checkout(){
+  if(cart.length===0) return alert("No items");
+  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
+  sales.push({
+    date:new Date().toLocaleString(),
+    worker:worker.value,
+    shift:shift.value,
+    items:cart,
+    total:cart.reduce((a,b)=>a+b,0)
+  });
+  localStorage.setItem("sales",JSON.stringify(sales));
+  clearCart();
+}
+
+function openAdmin(){
+  if(pin.value!==ADMIN_PIN) return alert("Wrong PIN");
+  admin.classList.toggle("hidden");
+  renderReports();
+}
+
+function dailyReset(){
+  if(confirm("Reset all sales?")){
+    localStorage.removeItem("sales");
+    renderReports();
+  }
+}
+
+function exportCSV(){
+  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
+  let csv="Date,Worker,Shift,Total(DA)\\n";
+  sales.forEach(s=>csv+=`${s.date},${s.worker},${s.shift},${s.total}\\n`);
+  let blob=new Blob([csv],{type:"text/csv"});
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="sales.csv";
+  a.click();
+}
+
+function renderReports(){
+  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
+  let total=0,byPrice={};
+  sales.forEach(s=>{
+    total+=s.total;
+    s.items.forEach(p=>byPrice[p]=(byPrice[p]||0)+1);
+  });
+  let html=`<b>Total Sales:</b> ${total} DA<br><b>By Product:</b><br>`;
+  for(let p in byPrice) html+=`${p} DA : ${byPrice[p]}<br>`;
+  reports.innerHTML=html;
+}
+</script>
+
+</body>
+</html>
