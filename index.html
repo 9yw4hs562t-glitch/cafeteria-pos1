@@ -9,9 +9,9 @@
 body{margin:0;font-family:Arial;background:#f4f4f4}
 header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
 .container{padding:10px}
-.products{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
-.product{background:#fff;padding:15px;text-align:center;border-radius:8px;
-box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold;font-size:16px}
+.products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+.product{background:#fff;padding:12px;text-align:center;border-radius:8px;
+box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold}
 .cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
 .cart-item{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:4px 0}
 button{width:100%;padding:12px;margin-top:8px;border:none;border-radius:6px;font-size:16px;color:#fff}
@@ -21,19 +21,20 @@ button{width:100%;padding:12px;margin-top:8px;border:none;border-radius:6px;font
 .gray{background:#6c757d}
 select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 .hidden{display:none}
+.small{font-size:13px;color:#555}
 </style>
 </head>
 <body>
 
-<header> CAFE LEGENDAIRE </header>
+<header>📊 Cafeteria POS</header>
 
 <div class="container">
 
 <div class="panel">
 <b>Worker</b>
 <select id="worker">
-<option>ISMAT</option>
-<option>AHMED</option>
+<option>Admin 1</option>
+<option>Admin 2</option>
 <option>Admin 3</option>
 <option>Admin 4</option>
 <option>Admin 5</option>
@@ -43,8 +44,8 @@ select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 
 <b>Shift</b>
 <select id="shift">
-<option>SBAH</option>
-<option>3CHIYA</option>
+<option>Morning</option>
+<option>Evening</option>
 </select>
 </div>
 
@@ -75,11 +76,14 @@ select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 </div>
 
 <script>
-const ADMIN_PIN = "12344";
+const ADMIN_PIN = "1234";
 let cart = [];
 
+// PRODUCTS WITH NAME + PRICE
 let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [
-  30,40,50,60,70,80,100,120,200
+  {name:"Coffee", price:30},
+  {name:"Tea", price:40},
+  {name:"Sandwich", price:200}
 ];
 
 const productsDiv = document.getElementById("products");
@@ -89,11 +93,11 @@ function saveProducts(){
 }
 
 function renderProducts(){
-  productsDiv.innerHTML = "";
-  PRODUCTS.forEach(p=>{
+  productsDiv.innerHTML="";
+  PRODUCTS.forEach((p,i)=>{
     let d=document.createElement("div");
     d.className="product";
-    d.innerText=p+" DA";
+    d.innerHTML = `${p.name}<br><span class="small">${p.price} DA</span>`;
     d.onclick=()=>{cart.push(p);renderCart()};
     productsDiv.appendChild(d);
   });
@@ -102,13 +106,14 @@ function renderProducts(){
 renderProducts();
 
 function addProduct(){
-  let price = prompt("Enter product price (DA):");
-  if(!price) return;
+  let name = prompt("Product name:");
+  if(!name) return;
+
+  let price = prompt("Product price (DA):");
   price = parseInt(price);
   if(isNaN(price) || price<=0) return alert("Invalid price");
-  if(PRODUCTS.includes(price)) return alert("Product already exists");
-  PRODUCTS.push(price);
-  PRODUCTS.sort((a,b)=>a-b);
+
+  PRODUCTS.push({name, price});
   saveProducts();
   renderProducts();
 }
@@ -118,10 +123,10 @@ function renderCart(){
   c.innerHTML="";
   let t=0;
   cart.forEach((p,i)=>{
-    t+=p;
+    t+=p.price;
     let d=document.createElement("div");
     d.className="cart-item";
-    d.innerHTML=`${p} DA <span style='color:red' onclick='removeItem(${i})'>✖</span>`;
+    d.innerHTML=`${p.name} - ${p.price} DA <span style='color:red' onclick='removeItem(${i})'>✖</span>`;
     c.appendChild(d);
   });
   document.getElementById("total").innerText=t;
@@ -138,7 +143,7 @@ function checkout(){
     worker:worker.value,
     shift:shift.value,
     items:cart,
-    total:cart.reduce((a,b)=>a+b,0)
+    total:cart.reduce((a,b)=>a+b.price,0)
   });
   localStorage.setItem("sales",JSON.stringify(sales));
   clearCart();
@@ -159,8 +164,12 @@ function dailyReset(){
 
 function exportCSV(){
   let sales=JSON.parse(localStorage.getItem("sales")||"[]");
-  let csv="Date,Worker,Shift,Total(DA)\\n";
-  sales.forEach(s=>csv+=`${s.date},${s.worker},${s.shift},${s.total}\\n`);
+  let csv="Date,Worker,Shift,Product,Price\\n";
+  sales.forEach(s=>{
+    s.items.forEach(i=>{
+      csv+=`${s.date},${s.worker},${s.shift},${i.name},${i.price}\\n`;
+    });
+  });
   let blob=new Blob([csv],{type:"text/csv"});
   let a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -170,14 +179,9 @@ function exportCSV(){
 
 function renderReports(){
   let sales=JSON.parse(localStorage.getItem("sales")||"[]");
-  let total=0,byPrice={};
-  sales.forEach(s=>{
-    total+=s.total;
-    s.items.forEach(p=>byPrice[p]=(byPrice[p]||0)+1);
-  });
-  let html=`<b>Total Sales:</b> ${total} DA<br><b>By Product:</b><br>`;
-  for(let p in byPrice) html+=`${p} DA : ${byPrice[p]}<br>`;
-  reports.innerHTML=html;
+  let total=0;
+  sales.forEach(s=>total+=s.total);
+  reports.innerHTML=`<b>Total Sales:</b> ${total} DA`;
 }
 </script>
 
