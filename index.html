@@ -19,7 +19,7 @@ body::before{
   position:fixed;
   inset:0;
   background:url("IMG_0069.jpeg") center/cover no-repeat;
-  filter:blur(6px) brightness(0.9);
+  filter:blur(6px) brightness(.9);
   z-index:-1;
 }
 header{
@@ -37,9 +37,19 @@ header{
   padding:10px;
   margin-top:12px;
 }
-.products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.products{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px
+}
 .product{position:relative}
-.menu{position:absolute;top:6px;right:8px;font-size:18px;cursor:pointer}
+.menu{
+  position:absolute;
+  top:6px;
+  right:8px;
+  font-size:18px;
+  cursor:pointer
+}
 .small{font-size:12px;color:#444}
 button{
   width:100%;
@@ -48,28 +58,17 @@ button{
   border:none;
   border-radius:6px;
   font-size:15px;
-  color:#fff
+  color:#fff;
 }
 .green{background:#28a745}
 .red{background:#dc3545}
 .blue{background:#007bff}
 .gray{background:#6c757d}
-.filter{display:flex;gap:6px;margin:10px 0}
-.filter button{flex:1}
 .hidden{display:none}
 .history-item{
   border-bottom:1px solid #ddd;
   padding:6px;
   cursor:pointer;
-}
-.history-filters{
-  display:flex;
-  gap:6px;
-  margin-bottom:6px;
-}
-.history-filters button{
-  flex:1;
-  font-size:13px;
 }
 </style>
 </head>
@@ -93,12 +92,6 @@ button{
 
 <h3>Products</h3>
 
-<div class="filter">
-<button class="gray" onclick="setFilter('all')">All</button>
-<button class="blue" onclick="setFilter('Drink')">Drinks</button>
-<button class="green" onclick="setFilter('Food')">Food</button>
-</div>
-
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
 <button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
 
@@ -113,25 +106,22 @@ button{
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
-<!-- HISTORY -->
 <div class="panel">
 <h3>🧾 Order History</h3>
-
-<div class="history-filters">
-<button class="gray" onclick="setHistoryFilter('all')">All</button>
-<button class="blue" onclick="setHistoryFilter('Morning')">Morning</button>
-<button class="green" onclick="setHistoryFilter('Evening')">Evening</button>
-</div>
-
 <div id="history"></div>
 </div>
 
 <div class="panel">
 <input type="password" id="pin" placeholder="Admin PIN">
 <button class="gray" onclick="openAdmin()">Admin</button>
+
 <div id="admin" class="hidden">
-<button class="blue" onclick="reportShift('Morning')">Morning Shifts</button>
-<button class="blue" onclick="reportShift('Evening')">Evening Shifts</button>
+<button class="blue" onclick="reportShift('Morning')">Morning Shift</button>
+<button class="blue" onclick="reportShift('Evening')">Evening Shift</button>
+
+<button class="blue" onclick="exportExcel()">📥 Export Excel</button>
+<button class="red" onclick="archiveDay()">🧹 Archive & Reset Day</button>
+
 <div id="reports"></div>
 </div>
 </div>
@@ -139,22 +129,21 @@ button{
 </div>
 
 <script>
-/* 🔥 FIREBASE */
-const firebaseConfig = {
-  apiKey: "AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
-  authDomain: "cafe-legendaire-pos.firebaseapp.com",
-  projectId: "cafe-legendaire-pos",
-  storageBucket: "cafe-legendaire-pos.firebasestorage.app",
-  messagingSenderId: "548449258422",
-  appId: "1:548449258422:web:ab140347d114bf9d82cf17"
+/* FIREBASE */
+const firebaseConfig={
+  apiKey:"AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
+  authDomain:"cafe-legendaire-pos.firebaseapp.com",
+  projectId:"cafe-legendaire-pos",
+  storageBucket:"cafe-legendaire-pos.firebasestorage.app",
+  messagingSenderId:"548449258422",
+  appId:"1:548449258422:web:ab140347d114bf9d82cf17"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db=firebase.firestore();
 
 /* DATA */
 const ADMIN_PIN="5554";
-let PRODUCTS=[], SALES=[], cart=[], filter="all";
-let HISTORY_FILTER = "all";
+let PRODUCTS=[], SALES=[], cart=[];
 
 /* SYNC */
 db.collection("products").onSnapshot(s=>{
@@ -162,19 +151,18 @@ db.collection("products").onSnapshot(s=>{
   render();
 });
 db.collection("sales").orderBy("timestamp","desc").onSnapshot(s=>{
-  SALES=s.docs.map(d=>d.data());
+  SALES=s.docs.map(d=>({...d.data(),id:d.id}));
   renderHistory();
 });
 
 /* PRODUCTS */
-function setFilter(c){filter=c;render();}
 function render(){
   products.innerHTML="";
   PRODUCTS.forEach(p=>{
-    if(filter!=="all"&&p.cat!==filter)return;
     let d=document.createElement("div");
     d.className="product";
-    d.innerHTML=`<b>${p.name}</b><br>${p.price} DA<br>Stock:${p.stock}`;
+    d.innerHTML=`<div class="menu" onclick="productMenu('${p.id}')">⋮</div>
+    <b>${p.name}</b><br>${p.price} DA<br>Stock:${p.stock}`;
     d.onclick=()=>addToCart(p.id);
     products.appendChild(d);
   });
@@ -182,8 +170,28 @@ function render(){
 function addProduct(){
   let n=prompt("Name"); if(!n)return;
   let p=parseInt(prompt("Price")); if(isNaN(p))return;
-  let c=prompt("Category"); let s=parseInt(prompt("Stock"))||0;
-  db.collection("products").doc(n).set({name:n,price:p,cat:c,stock:s,code:""});
+  let s=parseInt(prompt("Stock"))||0;
+  db.collection("products").doc(n).set({name:n,price:p,stock:s,code:""});
+}
+
+/* PRODUCT MENU */
+let scanAssignId=null;
+function productMenu(id){
+  let p=PRODUCTS.find(x=>x.id===id);
+  let c=prompt("1 Modify\n2 Stock +/-\n3 Scan barcode\n4 Delete");
+  if(c==="1"){
+    let n=prompt("Name",p.name);
+    let pr=parseInt(prompt("Price",p.price));
+    if(n)p.name=n;
+    if(!isNaN(pr))p.price=pr;
+  }
+  if(c==="2"){
+    let q=parseInt(prompt("Stock change"));
+    if(!isNaN(q)){p.stock+=q;if(p.stock<0)p.stock=0;}
+  }
+  if(c==="3"){scanAssignId=id;scanAssign();return;}
+  if(c==="4"){if(confirm("Delete?")){db.collection("products").doc(id).delete();return;}}
+  db.collection("products").doc(id).set(p);
 }
 
 /* CART */
@@ -205,36 +213,31 @@ function clearCart(){
   cart=[]; renderCart();
 }
 
-/* SAVE ORDER */
+/* CHECKOUT */
 function checkout(){
   if(!cart.length)return;
   let items={};
   cart.forEach(p=>items[p.name]=(items[p.name]||0)+1);
-  let orderItems=Object.keys(items).map(n=>{
+  let order=Object.keys(items).map(n=>{
     let p=cart.find(x=>x.name===n);
     return {name:n,price:p.price,qty:items[n]};
   });
   db.collection("sales").add({
+    timestamp:Date.now(),
     date:new Date().toLocaleDateString(),
     time:new Date().toLocaleTimeString(),
-    timestamp:Date.now(),
     shift:shift.value,
     admin:worker.value,
     total:cart.reduce((a,b)=>a+b.price,0),
-    items:orderItems
+    items:order
   });
   cart=[]; renderCart();
 }
 
 /* HISTORY */
-function setHistoryFilter(f){
-  HISTORY_FILTER = f;
-  renderHistory();
-}
 function renderHistory(){
   history.innerHTML="";
   SALES.forEach(s=>{
-    if(HISTORY_FILTER!=="all" && s.shift!==HISTORY_FILTER) return;
     let d=document.createElement("div");
     d.className="history-item";
     d.innerHTML=`${s.time} • ${s.admin} • <b>${s.total} DA</b>`;
@@ -243,11 +246,9 @@ function renderHistory(){
   });
 }
 function viewOrder(o){
-  let txt=`🧾 ${o.time}\n${o.admin} (${o.shift})\n\n`;
-  o.items.forEach(i=>{
-    txt+=`${i.name} x${i.qty} = ${i.price*i.qty} DA\n`;
-  });
-  txt+=`\nTOTAL: ${o.total} DA`;
+  let txt=`${o.time} (${o.shift})\n${o.admin}\n\n`;
+  o.items.forEach(i=>txt+=`${i.name} x${i.qty}\n`);
+  txt+=`\nTOTAL ${o.total} DA`;
   alert(txt);
 }
 
@@ -258,8 +259,52 @@ function openAdmin(){
 }
 function reportShift(s){
   let sum=0,count=0;
-  SALES.forEach(x=>{if(x.shift===s){sum+=x.total;count++;}});
+  SALES.forEach(o=>{if(o.shift===s){sum+=o.total;count++;}});
   reports.innerHTML=`${s}: ${count} orders<br>Total ${sum} DA`;
+}
+
+/* EXPORT + ARCHIVE */
+function exportExcel(){
+  let csv="Date,Time,Shift,Admin,Total\n";
+  SALES.forEach(s=>csv+=`${s.date},${s.time},${s.shift},${s.admin},${s.total}\n`);
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="CAFE_LEGENDAIRE_TODAY.csv";
+  a.click();
+}
+function archiveDay(){
+  if(!confirm("Archive today and reset POS?"))return;
+  let today=new Date().toISOString().split("T")[0];
+  db.collection("archives").doc(today).set({date:today,sales:SALES});
+  SALES.forEach(s=>db.collection("sales").doc(s.id).delete());
+  reports.innerHTML="";
+  alert("Day archived");
+}
+
+/* SCAN */
+let scanOpen=false,scanInstance=null;
+function toggleScanSell(){
+  if(scanOpen){
+    scanInstance.stop();scanner.classList.add("hidden");scanOpen=false;return;
+  }
+  scanner.classList.remove("hidden");
+  scanInstance=new Html5Qrcode("scanner");
+  scanInstance.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    let p=PRODUCTS.find(x=>x.code===code);
+    if(!p)return alert("Not found");
+    addToCart(p.id);
+  });
+  scanOpen=true;
+}
+function scanAssign(){
+  scanner.classList.remove("hidden");
+  let qr=new Html5Qrcode("scanner");
+  qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    qr.stop();scanner.classList.add("hidden");
+    let p=PRODUCTS.find(x=>x.id===scanAssignId);
+    p.code=code;
+    db.collection("products").doc(p.id).set(p);
+  });
 }
 </script>
 
