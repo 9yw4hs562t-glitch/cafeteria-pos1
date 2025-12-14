@@ -3,48 +3,121 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cafeteria POS</title>
-<meta name="theme-color" content="#222">
+<title>CAFE LEGENDAIRE</title>
+<meta name="theme-color" content="#3a2a1d">
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body{margin:0;font-family:Arial;background:#f4f4f4}
-header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
+/* ===== BACKGROUND ===== */
+body{
+  margin:0;
+  font-family:Arial;
+}
+body::before{
+  content:"";
+  position:fixed;
+  top:0;left:0;
+  width:100%;
+  height:100%;
+  background:url("IMG_0069.jpeg") center/cover no-repeat;
+  filter:blur(6px) brightness(0.9);
+  z-index:-2;
+}
+
+/* ===== UI ===== */
+header{
+  background:rgba(34,34,34,0.9);
+  color:#fff;
+  padding:14px;
+  text-align:center;
+  font-size:20px;
+  font-weight:bold;
+  letter-spacing:1px;
+}
+
 .container{padding:10px}
-.products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-.product{background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,.1);position:relative}
-.menu{position:absolute;top:5px;right:5px;font-size:18px;cursor:pointer}
-.small{font-size:12px;color:#555}
-.cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
-button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font-size:15px;color:#fff}
+
+.products{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+  margin-top:10px
+}
+
+.product,.panel,.cart{
+  background:rgba(255,255,255,0.92);
+  backdrop-filter:blur(2px);
+  padding:10px;
+  border-radius:8px;
+  box-shadow:0 3px 8px rgba(0,0,0,.2);
+  margin-top:12px;
+}
+
+.product{position:relative}
+
+.menu{
+  position:absolute;
+  top:5px;
+  right:8px;
+  font-size:18px;
+  cursor:pointer;
+}
+
+.small{font-size:12px;color:#444}
+
+button{
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  border:none;
+  border-radius:6px;
+  font-size:15px;
+  color:#fff;
+  box-shadow:0 3px 6px rgba(0,0,0,.25);
+}
+
 .green{background:#28a745}
 .red{background:#dc3545}
 .blue{background:#007bff}
 .gray{background:#6c757d}
-.filter{display:flex;gap:6px;margin-top:8px}
+
+.filter{
+  display:flex;
+  gap:6px;
+  margin-top:8px
+}
 .filter button{flex:1}
+
 .hidden{display:none}
 #scanner{width:100%;margin-top:10px}
 </style>
 </head>
+
 <body>
 
-<header>📊 Cafeteria POS</header>
+<header>☕ CAFE LEGENDAIRE</header>
 
 <div class="container">
 
 <!-- SESSION -->
 <div class="panel">
 <select id="worker">
-<option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
-<option>Admin 4</option><option>Admin 5</option><option>Admin 6</option><option>Admin 7</option>
+<option>Ismat</option>
+<option>Ahmed</option>
+<option>Admin 3</option>
+<option>Admin 4</option>
+<option>Admin 5</option>
+<option>Admin 6</option>
+<option>Admin 7</option>
 </select>
+
 <select id="shift"></select>
 <button class="gray" onclick="endShift()">⏱ End Shift</button>
 </div>
 
 <!-- PRODUCTS -->
 <h3>Products</h3>
+
 <div class="filter">
 <button class="gray" onclick="filterCat('all')">All</button>
 <button class="blue" onclick="filterCat('Drink')">Drinks</button>
@@ -52,7 +125,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </div>
 
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
-<button class="gray" onclick="startScanSell()">📷 Scan (Sell)</button>
+<button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
 
 <div id="scanner" class="hidden"></div>
 <div class="products" id="products"></div>
@@ -66,34 +139,54 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
+<!-- ADMIN -->
+<div class="panel">
+<input type="password" id="pin" placeholder="Admin PIN">
+<button class="gray" onclick="openAdmin()">🔐 Admin</button>
+
+<div id="admin" class="hidden">
+<h4>📊 Accounting</h4>
+<button class="blue" onclick="report('shift')">Shift</button>
+<button class="blue" onclick="report('day')">Day</button>
+<button class="blue" onclick="report('week')">Week</button>
+<button class="blue" onclick="report('month')">Month</button>
+
+<button class="blue" onclick="exportExcel()">📥 Export Excel</button>
+<div id="reports"></div>
+</div>
+</div>
+
 </div>
 
 <script>
-/* ================== DATA ================== */
-let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [];
-let cart = [];
-let filter = "all";
-let SHIFT = localStorage.getItem("shift") || "Morning";
-shift.innerHTML = `<option>${SHIFT}</option>`;
+/* ===== DATA ===== */
+const ADMIN_PIN="5554";
+let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[];
+let SALES=JSON.parse(localStorage.getItem("sales"))||[];
+let cart=[],filter="all";
+let SHIFT=localStorage.getItem("shift")||"Morning";
 
-/* ================== SAVE ================== */
+shift.innerHTML=`<option>${SHIFT}</option>`;
+
+/* ===== SAVE ===== */
 function save(){
 localStorage.setItem("products",JSON.stringify(PRODUCTS));
+localStorage.setItem("sales",JSON.stringify(SALES));
 localStorage.setItem("shift",SHIFT);
 }
 
-/* ================== SHIFT ================== */
+/* ===== SHIFT ===== */
 function endShift(){
-SHIFT = SHIFT==="Morning" ? "Evening" : "Morning";
-shift.innerHTML = `<option>${SHIFT}</option>`;
-save(); alert("Shift changed to "+SHIFT);
+SHIFT=SHIFT==="Morning"?"Evening":"Morning";
+shift.innerHTML=`<option>${SHIFT}</option>`;
+save();alert("Shift changed to "+SHIFT);
 }
 
-/* ================== RENDER ================== */
+/* ===== PRODUCTS ===== */
 function render(){
 products.innerHTML="";
 PRODUCTS.forEach((p,i)=>{
-if(filter!=="all" && p.cat!==filter) return;
+if(filter!=="all" && p.cat!==filter)return;
 let d=document.createElement("div");
 d.className="product";
 d.innerHTML=`
@@ -107,85 +200,53 @@ products.appendChild(d);
 }
 render();
 
-/* ================== FILTER ================== */
 function filterCat(c){filter=c;render();}
 
-/* ================== ADD PRODUCT (INVENTORY) ================== */
 function addProduct(){
-let name = prompt("Product name");
-if(!name) return;
-let price = parseInt(prompt("Price DA"));
-if(isNaN(price)) return;
-let cat = prompt("Category (Drink/Food)");
-let stock = parseInt(prompt("Initial stock"));
-if(isNaN(stock)) stock = 0;
-
+let name=prompt("Product name");
+if(!name)return;
+let price=parseInt(prompt("Price DA"));
+if(isNaN(price))return;
+let cat=prompt("Category (Drink/Food)");
+let stock=parseInt(prompt("Initial stock"))||0;
 PRODUCTS.push({name,price,cat,stock,code:""});
-save(); render();
+save();render();
 }
 
-/* ================== PRODUCT MENU ================== */
-let scanTarget = null;
+/* ===== PRODUCT MENU ===== */
+let scanAssignIndex=null;
 
 function productMenu(i){
-let c = prompt(
-"1 = Modify\n"+
-"2 = Add / Remove stock\n"+
-"3 = Scan barcode\n"+
-"4 = Delete"
-);
-
+let c=prompt("1 Modify\n2 Stock +/-\n3 Scan barcode\n4 Delete");
 if(c==="1"){
 let n=prompt("Name",PRODUCTS[i].name);
 let p=parseInt(prompt("Price",PRODUCTS[i].price));
-let cat=prompt("Category",PRODUCTS[i].cat);
 if(n)PRODUCTS[i].name=n;
 if(!isNaN(p))PRODUCTS[i].price=p;
-if(cat)PRODUCTS[i].cat=cat;
 }
-
 if(c==="2"){
-let q=parseInt(prompt("Stock change (+ or -):"));
+let q=parseInt(prompt("Stock change + / -"));
 if(!isNaN(q)){
 PRODUCTS[i].stock+=q;
-if(PRODUCTS[i].stock<0) PRODUCTS[i].stock=0;
+if(PRODUCTS[i].stock<0)PRODUCTS[i].stock=0;
 }
 }
-
 if(c==="3"){
-scanTarget = i;
-startScanAssign();
-return;
+scanAssignIndex=i;
+toggleScanAssign();return;
 }
-
 if(c==="4"){
-if(confirm("Delete product?")) PRODUCTS.splice(i,1);
+if(confirm("Delete product?"))PRODUCTS.splice(i,1);
+}
+save();render();
 }
 
-save(); render();
-}
-
-/* ================== SCAN TO ASSIGN BARCODE ================== */
-function startScanAssign(){
-scanner.classList.remove("hidden");
-const qr=new Html5Qrcode("scanner");
-qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
-qr.stop(); scanner.classList.add("hidden");
-if(scanTarget!==null){
-PRODUCTS[scanTarget].code = code;
-scanTarget = null;
-save(); render();
-}
-});
-}
-
-/* ================== CART ================== */
+/* ===== CART ===== */
 function addToCart(i){
-let p=PRODUCTS[i];
-if(p.stock<=0) return alert("Out of stock");
-p.stock--;
-cart.push({index:i,...p});
-save(); render(); renderCart();
+if(PRODUCTS[i].stock<=0)return alert("Out of stock");
+PRODUCTS[i].stock--;
+cart.push({index:i,...PRODUCTS[i]});
+save();render();renderCart();
 }
 
 function renderCart(){
@@ -201,34 +262,19 @@ total.innerText=t;
 function removeItem(i){
 PRODUCTS[cart[i].index].stock++;
 cart.splice(i,1);
-save(); render(); renderCart();
+save();render();renderCart();
 }
 
 function clearCart(){
 cart.forEach(i=>PRODUCTS[i.index].stock++);
-cart=[]; save(); render(); renderCart();
+cart=[];save();render();renderCart();
 }
 
 function checkout(){
-cart=[]; save(); renderCart();
-}
-
-/* ================== SCAN TO SELL ================== */
-const beep = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
-function startScanSell(){
-scanner.classList.remove("hidden");
-const qr=new Html5Qrcode("scanner");
-qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
-let matches = PRODUCTS.filter(p=>p.code===code);
-if(matches.length===0) return alert("Product not found");
-if(matches.length>1) return alert("Barcode conflict");
-
-let index = PRODUCTS.findIndex(p=>p.code===code);
-addToCart(index);
-beep.play();
-});
-}
-</script>
-
-</body>
-</html>
+if(!cart.length)return;
+SALES.push({
+date:new Date().toLocaleDateString(),
+time:new Date().toLocaleTimeString(),
+shift:SHIFT,
+admin:worker.value,
+total:cart.reduce((a,b)=>a+b.price,0
