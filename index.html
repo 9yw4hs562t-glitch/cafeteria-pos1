@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CAFE LEGENDAIRE</title>
+<title>CAFE LEGENDAIRE POS</title>
 
 <!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -13,50 +13,73 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body{margin:0;font-family:Arial}
+body{margin:0;font-family:Segoe UI,Arial;background:#000}
 body::before{
   content:"";
   position:fixed;
   inset:0;
   background:url("IMG_0069.jpeg") center/cover no-repeat;
-  filter:blur(6px) brightness(0.9);
+  filter:blur(8px) brightness(.8);
   z-index:-1;
 }
 header{
-  background:rgba(34,34,34,.9);
+  background:rgba(0,0,0,.85);
   color:#fff;
-  padding:14px;
+  padding:16px;
   text-align:center;
-  font-size:22px;
-  font-weight:bold;
+  font-size:24px;
+  letter-spacing:2px;
 }
-.container{padding:10px}
-.panel,.product,.cart{
-  background:rgba(255,255,255,.93);
-  border-radius:8px;
+.app{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+  padding:12px;
+}
+@media(min-width:1000px){
+  .app{grid-template-columns:2.5fr 1.5fr 1.5fr;height:calc(100vh - 80px)}
+}
+.card{
+  background:rgba(255,255,255,.95);
+  border-radius:12px;
+  padding:12px;
+  box-shadow:0 6px 20px rgba(0,0,0,.3);
+  display:flex;
+  flex-direction:column;
+}
+.products{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:10px;
+}
+.product{
+  background:#fff;
+  border-radius:10px;
   padding:10px;
-  margin-top:12px;
-}
-.products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.product{position:relative}
-.menu{position:absolute;top:6px;right:8px;font-size:18px;cursor:pointer}
-.small{font-size:12px;color:#444}
-button{
-  width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;
-  font-size:15px;color:#fff
-}
-.green{background:#28a745}
-.red{background:#dc3545}
-.blue{background:#007bff}
-.gray{background:#6c757d}
-.filter{display:flex;gap:6px;margin:10px 0}
-.filter button{flex:1}
-.hidden{display:none}
-.history-item{
-  border-bottom:1px solid #ddd;
-  padding:6px;
   cursor:pointer;
 }
+.menu{float:right;font-size:18px}
+.small{font-size:12px;color:#555}
+button{
+  padding:10px;
+  margin-top:6px;
+  border:none;
+  border-radius:8px;
+  font-size:15px;
+  cursor:pointer;
+}
+.blue{background:#007bff;color:#fff}
+.green{background:#28a745;color:#fff}
+.red{background:#dc3545;color:#fff}
+.gray{background:#6c757d;color:#fff}
+.cart-items,.history{flex:1;overflow:auto}
+.history-item{
+  padding:8px;
+  border-bottom:1px solid #ddd;
+  cursor:pointer;
+}
+.history-item:hover{background:#f3f3f3}
+.hidden{display:none}
 </style>
 </head>
 
@@ -64,9 +87,20 @@ button{
 
 <header>☕ CAFE LEGENDAIRE</header>
 
-<div class="container">
+<div class="app">
 
-<div class="panel">
+<!-- PRODUCTS -->
+<div class="card">
+<h3>Products</h3>
+<button class="blue" onclick="addProduct()">➕ Add Product</button>
+<button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
+<div id="scanner" class="hidden"></div>
+<div class="products" id="products"></div>
+</div>
+
+<!-- CART -->
+<div class="card">
+<h3>Current Order</h3>
 <select id="worker">
 <option>Ismat</option>
 <option>Ahmed</option>
@@ -75,138 +109,121 @@ button{
 <option>Morning</option>
 <option>Evening</option>
 </select>
-</div>
 
-<h3>Products</h3>
-
-<div class="filter">
-<button class="gray" onclick="setFilter('all')">All</button>
-<button class="blue" onclick="setFilter('Drink')">Drinks</button>
-<button class="green" onclick="setFilter('Food')">Food</button>
-</div>
-
-<button class="blue" onclick="addProduct()">➕ Add Product</button>
-<button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
-
-<div id="scanner" class="hidden"></div>
-<div class="products" id="products"></div>
-
-<div class="cart">
-<h3>Current Order</h3>
-<div id="cartItems"></div>
-<b>Total: <span id="total">0</span> DA</b>
-<button class="green" onclick="checkout()">✔ Validate Order</button>
+<div class="cart-items" id="cartItems"></div>
+<h3>Total: <span id="total">0</span> DA</h3>
+<button class="green" onclick="checkout()">✔ Validate</button>
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
-<div class="panel">
-<h3>🧾 Order History</h3>
-<div id="history"></div>
-</div>
+<!-- HISTORY + ADMIN -->
+<div class="card">
+<h3>🧾 Orders History</h3>
+<div class="history" id="history"></div>
 
-<div class="panel">
+<hr>
 <input type="password" id="pin" placeholder="Admin PIN">
 <button class="gray" onclick="openAdmin()">Admin</button>
+
 <div id="admin" class="hidden">
-<button class="blue" onclick="reportShift('Morning')">Morning Shifts</button>
-<button class="blue" onclick="reportShift('Evening')">Evening Shifts</button>
+<h4>📊 Shift Accounting</h4>
+
+<button class="blue" onclick="showShift('Morning')">Morning Shift</button>
+<button class="blue" onclick="showShift('Evening')">Evening Shift</button>
+
 <div id="reports"></div>
+
+<button class="blue" onclick="exportShift()">📥 Export Shift Excel</button>
+<button class="red" onclick="clearShift()">🧹 Clear Shift Sales</button>
 </div>
 </div>
 
 </div>
 
 <script>
-/* 🔥 FIREBASE */
-const firebaseConfig = {
-  apiKey: "AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
-  authDomain: "cafe-legendaire-pos.firebaseapp.com",
-  projectId: "cafe-legendaire-pos",
-  storageBucket: "cafe-legendaire-pos.firebasestorage.app",
-  messagingSenderId: "548449258422",
-  appId: "1:548449258422:web:ab140347d114bf9d82cf17"
+/* FIREBASE */
+const firebaseConfig={
+  apiKey:"AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
+  authDomain:"cafe-legendaire-pos.firebaseapp.com",
+  projectId:"cafe-legendaire-pos",
+  storageBucket:"cafe-legendaire-pos.firebasestorage.app",
+  messagingSenderId:"548449258422",
+  appId:"1:548449258422:web:ab140347d114bf9d82cf17"
 };
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db=firebase.firestore();
 
 /* DATA */
 const ADMIN_PIN="5554";
-let PRODUCTS=[], SALES=[], cart=[], filter="all";
+let PRODUCTS=[],SALES=[],cart=[],ACTIVE_SHIFT="Morning";
 
 /* SYNC */
 db.collection("products").onSnapshot(s=>{
   PRODUCTS=s.docs.map(d=>({...d.data(),id:d.id}));
-  render();
+  renderProducts();
 });
 db.collection("sales").orderBy("timestamp","desc").onSnapshot(s=>{
-  SALES=s.docs.map(d=>d.data());
+  SALES=s.docs.map(d=>({...d.data(),id:d.id}));
   renderHistory();
 });
 
 /* PRODUCTS */
-function setFilter(c){filter=c;render();}
-function render(){
+function renderProducts(){
   products.innerHTML="";
   PRODUCTS.forEach(p=>{
-    if(filter!=="all"&&p.cat!==filter)return;
     let d=document.createElement("div");
     d.className="product";
-    d.innerHTML=`<b>${p.name}</b><br>${p.price} DA<br>Stock:${p.stock}`;
+    d.innerHTML=`<b>${p.name}</b><br>
+    <span class="small">${p.price} DA | Stock ${p.stock}</span>`;
     d.onclick=()=>addToCart(p.id);
     products.appendChild(d);
   });
 }
 function addProduct(){
-  let n=prompt("Name"); if(!n)return;
-  let p=parseInt(prompt("Price")); if(isNaN(p))return;
-  let c=prompt("Category"); let s=parseInt(prompt("Stock"))||0;
-  db.collection("products").doc(n).set({name:n,price:p,cat:c,stock:s,code:""});
+  let n=prompt("Name");if(!n)return;
+  let p=parseInt(prompt("Price"));if(isNaN(p))return;
+  let s=parseInt(prompt("Stock"))||0;
+  db.collection("products").doc(n).set({name:n,price:p,stock:s,code:""});
 }
 
 /* CART */
 function addToCart(id){
   let p=PRODUCTS.find(x=>x.id===id);
   if(p.stock<=0)return;
-  p.stock--; db.collection("products").doc(id).set(p);
-  cart.push(p); renderCart();
+  p.stock--;db.collection("products").doc(id).set(p);
+  cart.push(p);renderCart();
 }
 function renderCart(){
-  cartItems.innerHTML=""; let t=0;
-  cart.forEach((p,i)=>{t+=p.price;
-    cartItems.innerHTML+=`${p.name} ${p.price} DA<br>`;
+  cartItems.innerHTML="";let t=0;
+  cart.forEach(p=>{t+=p.price;
+    cartItems.innerHTML+=`<div>${p.name}<span>${p.price} DA</span></div>`;
   });
   total.innerText=t;
 }
 function clearCart(){
   cart.forEach(p=>{p.stock++;db.collection("products").doc(p.id).set(p);});
-  cart=[]; renderCart();
+  cart=[];renderCart();
 }
 
-/* ✔ SAVE FULL ORDER */
+/* CHECKOUT */
 function checkout(){
   if(!cart.length)return;
-
   let items={};
-  cart.forEach(p=>{
-    items[p.name]=(items[p.name]||0)+1;
-  });
-
-  let orderItems=Object.keys(items).map(n=>{
+  cart.forEach(p=>items[p.name]=(items[p.name]||0)+1);
+  let order=Object.keys(items).map(n=>{
     let p=cart.find(x=>x.name===n);
     return {name:n,price:p.price,qty:items[n]};
   });
-
   db.collection("sales").add({
+    timestamp:Date.now(),
     date:new Date().toLocaleDateString(),
     time:new Date().toLocaleTimeString(),
-    timestamp:Date.now(),
     shift:shift.value,
     admin:worker.value,
     total:cart.reduce((a,b)=>a+b.price,0),
-    items:orderItems
+    items:order
   });
-
-  cart=[]; renderCart();
+  cart=[];renderCart();
 }
 
 /* HISTORY */
@@ -220,14 +237,10 @@ function renderHistory(){
     history.appendChild(d);
   });
 }
-
-/* 👁 VIEW FULL ORDER */
 function viewOrder(o){
-  let txt=`🧾 ${o.time}\n${o.admin} (${o.shift})\n\n`;
-  o.items.forEach(i=>{
-    txt+=`${i.name} x${i.qty} = ${i.price*i.qty} DA\n`;
-  });
-  txt+=`\nTOTAL: ${o.total} DA`;
+  let txt=`${o.time} (${o.shift})\n${o.admin}\n\n`;
+  o.items.forEach(i=>txt+=`${i.name} x${i.qty}\n`);
+  txt+=`\nTOTAL ${o.total} DA`;
   alert(txt);
 }
 
@@ -236,10 +249,42 @@ function openAdmin(){
   if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
   admin.classList.toggle("hidden");
 }
-function reportShift(s){
+function showShift(s){
+  ACTIVE_SHIFT=s;
   let sum=0,count=0;
-  SALES.forEach(x=>{if(x.shift===s){sum+=x.total;count++;}});
-  reports.innerHTML=`${s}: ${count} orders<br>Total ${sum} DA`;
+  SALES.forEach(o=>{if(o.shift===s){sum+=o.total;count++;}});
+  reports.innerHTML=`${s} Orders: ${count}<br>Total: ${sum} DA`;
+}
+function exportShift(){
+  let csv="Date,Time,Admin,Total\n";
+  SALES.filter(o=>o.shift===ACTIVE_SHIFT)
+       .forEach(o=>csv+=`${o.date},${o.time},${o.admin},${o.total}\n`);
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`${ACTIVE_SHIFT}_SHIFT.csv`;
+  a.click();
+}
+function clearShift(){
+  if(!confirm("Clear sales for "+ACTIVE_SHIFT+" shift?"))return;
+  SALES.filter(o=>o.shift===ACTIVE_SHIFT)
+       .forEach(o=>db.collection("sales").doc(o.id).delete());
+  reports.innerHTML="";
+}
+
+/* SCAN */
+let scanOpen=false,scanInstance=null;
+function toggleScanSell(){
+  if(scanOpen){
+    scanInstance.stop();scanner.classList.add("hidden");scanOpen=false;return;
+  }
+  scanner.classList.remove("hidden");
+  scanInstance=new Html5Qrcode("scanner");
+  scanInstance.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    let p=PRODUCTS.find(x=>x.code===code);
+    if(!p)return alert("Not found");
+    addToCart(p.id);
+  });
+  scanOpen=true;
 }
 </script>
 
