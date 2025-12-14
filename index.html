@@ -34,26 +34,28 @@ header{
 .container{padding:10px}
 .panel,.product,.cart{
   background:rgba(255,255,255,.93);
-  backdrop-filter:blur(2px);
   border-radius:8px;
   padding:10px;
   margin-top:12px;
-  box-shadow:0 3px 8px rgba(0,0,0,.25);
 }
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .product{position:relative}
 .menu{position:absolute;top:6px;right:8px;font-size:18px;cursor:pointer}
 .small{font-size:12px;color:#444}
 button{
-  width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;
-  font-size:15px;color:#fff;cursor:pointer;
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  border:none;
+  border-radius:6px;
+  font-size:15px;
+  color:#fff;
+  cursor:pointer;
 }
 .green{background:#28a745}
 .red{background:#dc3545}
 .blue{background:#007bff}
 .gray{background:#6c757d}
-.filter{display:flex;gap:6px;margin:10px 0}
-.filter button{flex:1}
 .hidden{display:none}
 #scanner{margin-top:10px}
 </style>
@@ -69,24 +71,14 @@ button{
 <select id="worker">
 <option>Ismat</option>
 <option>Ahmed</option>
-<option>Admin 3</option>
-<option>Admin 4</option>
-<option>Admin 5</option>
-<option>Admin 6</option>
-<option>Admin 7</option>
 </select>
-
-<select id="shift"></select>
-<button class="gray" onclick="endShift()">⏱ End Shift</button>
+<select id="shift">
+<option>Morning</option>
+<option>Evening</option>
+</select>
 </div>
 
 <h3>Products</h3>
-
-<div class="filter">
-<button class="gray" onclick="setFilter('all')">All</button>
-<button class="blue" onclick="setFilter('Drink')">Drinks</button>
-<button class="green" onclick="setFilter('Food')">Food</button>
-</div>
 
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
 <button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
@@ -107,14 +99,13 @@ button{
 <button class="gray" onclick="openAdmin()">🔐 Admin</button>
 
 <div id="admin" class="hidden">
-<h4>📊 Accounting</h4>
-<button class="blue" onclick="report('shift')">Shift</button>
-<button class="blue" onclick="report('day')">Day</button>
-<button class="blue" onclick="report('week')">Week</button>
-<button class="blue" onclick="report('month')">Month</button>
+<h4>📊 Shift Sales (per product)</h4>
+
+<button class="blue" onclick="report('Morning')">Morning Shift</button>
+<button class="blue" onclick="report('Evening')">Evening Shift</button>
 
 <button class="blue" onclick="exportExcel()">📥 Export Excel</button>
-<button class="red" onclick="archiveDay()">📅 Archive & Reset Day</button>
+<button class="red" onclick="cleanPOS()">🧹 Clean POS</button>
 
 <div id="reports"></div>
 </div>
@@ -123,71 +114,53 @@ button{
 </div>
 
 <script>
-/* ================= FIREBASE CONFIG ================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
-  authDomain: "cafe-legendaire-pos.firebaseapp.com",
-  projectId: "cafe-legendaire-pos",
-  storageBucket: "cafe-legendaire-pos.firebasestorage.app",
-  messagingSenderId: "548449258422",
-  appId: "1:548449258422:web:ab140347d114bf9d82cf17"
+/* 🔥 FIREBASE */
+const firebaseConfig={
+  apiKey:"AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
+  authDomain:"cafe-legendaire-pos.firebaseapp.com",
+  projectId:"cafe-legendaire-pos",
+  storageBucket:"cafe-legendaire-pos.firebasestorage.app",
+  messagingSenderId:"548449258422",
+  appId:"1:548449258422:web:ab140347d114bf9d82cf17"
 };
-
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const db=firebase.firestore();
 
-/* ================= DATA ================= */
-const ADMIN_PIN = "5554";
-let PRODUCTS = [];
-let SALES = [];
-let cart = [];
-let filter = "all";
-let SHIFT = "Morning";
+/* DATA */
+const ADMIN_PIN="5554";
+let PRODUCTS=[], SALES=[], cart=[];
 
-shift.innerHTML = `<option>${SHIFT}</option>`;
-
-/* ================= REALTIME SYNC ================= */
-db.collection("products").onSnapshot(snap=>{
-  PRODUCTS = snap.docs.map(d=>({...d.data(), id:d.id}));
-  render();
+/* SYNC */
+db.collection("products").onSnapshot(s=>{
+  PRODUCTS=s.docs.map(d=>({...d.data(),id:d.id}));
+  renderProducts();
+});
+db.collection("sales").onSnapshot(s=>{
+  SALES=s.docs.map(d=>({...d.data(),id:d.id}));
 });
 
-db.collection("sales").onSnapshot(snap=>{
-  SALES = snap.docs.map(d=>d.data());
-});
-
-/* ================= UI ================= */
-function setFilter(c){filter=c;render();}
-function endShift(){
-  SHIFT = SHIFT==="Morning"?"Evening":"Morning";
-  shift.innerHTML=`<option>${SHIFT}</option>`;
-}
-
-function render(){
+/* PRODUCTS */
+function renderProducts(){
   products.innerHTML="";
   PRODUCTS.forEach(p=>{
-    if(filter!=="all" && p.cat!==filter) return;
     let d=document.createElement("div");
     d.className="product";
     d.innerHTML=`
       <div class="menu" onclick="productMenu('${p.id}')">⋮</div>
-      <b>${p.name}</b><br>
-      <span class="small">${p.price} DA – ${p.cat}</span><br>
-      <span class="small">Stock: ${p.stock}</span>`;
+      <b>${p.name}</b><br>${p.price} DA<br>Stock:${p.stock}`;
     d.onclick=()=>addToCart(p.id);
     products.appendChild(d);
   });
 }
 
-/* ================= INVENTORY ================= */
 function addProduct(){
-  let name=prompt("Name"); if(!name) return;
-  let price=parseInt(prompt("Price")); if(isNaN(price)) return;
-  let cat=prompt("Category");
-  let stock=parseInt(prompt("Stock"))||0;
-  db.collection("products").doc(name).set({name,price,cat,stock,code:""});
+  let n=prompt("Name"); if(!n)return;
+  let p=parseInt(prompt("Price")); if(isNaN(p))return;
+  let s=parseInt(prompt("Stock"))||0;
+  db.collection("products").doc(n).set({name:n,price:p,stock:s,code:""});
 }
 
+/* PRODUCT MENU */
 let scanAssignId=null;
 function productMenu(id){
   let p=PRODUCTS.find(x=>x.id===id);
@@ -203,58 +176,58 @@ function productMenu(id){
     if(!isNaN(q)){p.stock+=q;if(p.stock<0)p.stock=0;}
   }
   if(c==="3"){scanAssignId=id;scanAssign();return;}
-  if(c==="4"){if(confirm("Delete?")) db.collection("products").doc(id).delete();return;}
+  if(c==="4"){if(confirm("Delete?")){db.collection("products").doc(id).delete();return;}}
   db.collection("products").doc(id).set(p);
 }
 
-/* ================= CART ================= */
+/* CART */
 function addToCart(id){
   let p=PRODUCTS.find(x=>x.id===id);
-  if(p.stock<=0) return alert("Out of stock");
-  p.stock--;
-  db.collection("products").doc(id).set(p);
-  cart.push(p);
-  render();renderCart();
+  if(p.stock<=0)return;
+  p.stock--;db.collection("products").doc(id).set(p);
+  cart.push(p);renderCart();
 }
-
 function renderCart(){
   cartItems.innerHTML="";let t=0;
-  cart.forEach((p,i)=>{
-    t+=p.price;
-    cartItems.innerHTML+=`${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
+  cart.forEach(p=>{t+=p.price;
+    cartItems.innerHTML+=`${p.name} ${p.price} DA<br>`;
   });
   total.innerText=t;
 }
-
-function removeItem(i){
-  let p=cart[i];
-  p.stock++;
-  db.collection("products").doc(p.id).set(p);
-  cart.splice(i,1);
-  render();renderCart();
-}
-
 function clearCart(){
-  cart.forEach(p=>{
-    p.stock++;
-    db.collection("products").doc(p.id).set(p);
-  });
-  cart=[];render();renderCart();
+  cart.forEach(p=>{p.stock++;db.collection("products").doc(p.id).set(p);});
+  cart=[];renderCart();
 }
 
+/* CHECKOUT (SAVE ITEMS) */
 function checkout(){
   if(!cart.length)return;
+
+  let map={};
+  cart.forEach(p=>{
+    map[p.name]=map[p.name]||{qty:0,price:p.price};
+    map[p.name].qty++;
+  });
+
+  let items=Object.keys(map).map(n=>({
+    name:n,
+    qty:map[n].qty,
+    price:map[n].price
+  }));
+
   db.collection("sales").add({
     date:new Date().toLocaleDateString(),
     time:new Date().toLocaleTimeString(),
-    shift:SHIFT,
+    shift:shift.value,
     admin:worker.value,
-    total:cart.reduce((a,b)=>a+b.price,0)
+    total:cart.reduce((a,b)=>a+b.price,0),
+    items:items
   });
-  cart=[];render();renderCart();
+
+  cart=[];renderCart();
 }
 
-/* ================= SCAN SELL ================= */
+/* SCAN */
 let scanOpen=false,scanInstance=null;
 function toggleScanSell(){
   if(scanOpen){
@@ -264,13 +237,11 @@ function toggleScanSell(){
   scanInstance=new Html5Qrcode("scanner");
   scanInstance.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
     let p=PRODUCTS.find(x=>x.code===code);
-    if(!p) return alert("Not found");
+    if(!p)return alert("Not found");
     addToCart(p.id);
   });
   scanOpen=true;
 }
-
-/* ================= SCAN ASSIGN ================= */
 function scanAssign(){
   scanner.classList.remove("hidden");
   let qr=new Html5Qrcode("scanner");
@@ -282,43 +253,52 @@ function scanAssign(){
   });
 }
 
-/* ================= ADMIN ================= */
+/* ADMIN */
 function openAdmin(){
-  if(pin.value!==ADMIN_PIN) return alert("Wrong PIN");
+  if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
   admin.classList.toggle("hidden");
 }
 
-function report(type){
-  let now=new Date(),sum=0,count=0;
+/* SHIFT REPORT */
+function report(shiftName){
+  let stats={}, total=0;
   SALES.forEach(s=>{
-    let d=new Date(s.date);
-    if(type==="shift"&&s.shift!==SHIFT)return;
-    if(type==="day"&&d.toDateString()!==now.toDateString())return;
-    if(type==="week"&&now-d>7*86400000)return;
-    if(type==="month"&&d.getMonth()!==now.getMonth())return;
-    sum+=s.total;count++;
+    if(s.shift!==shiftName)return;
+    total+=s.total;
+    s.items.forEach(i=>{
+      stats[i.name]=(stats[i.name]||0)+i.qty;
+    });
   });
-  reports.innerHTML=`Orders: ${count}<br>Total: ${sum} DA`;
+
+  let html=`<b>${shiftName} Shift</b><br>`;
+  Object.keys(stats).forEach(p=>{
+    html+=`${p}: ${stats[p]}<br>`;
+  });
+  html+=`<br><b>Total: ${total} DA</b>`;
+  reports.innerHTML=html;
 }
 
-/* ================= EXPORT & ARCHIVE ================= */
+/* EXPORT EXCEL */
 function exportExcel(){
-  let csv="Date,Time,Shift,Admin,Total\n";
-  SALES.forEach(s=>csv+=`${s.date},${s.time},${s.shift},${s.admin},${s.total}\n`);
+  let csv="Product,Quantity,Shift\n";
+  SALES.forEach(s=>{
+    s.items.forEach(i=>{
+      csv+=`${i.name},${i.qty},${s.shift}\n`;
+    });
+  });
   let a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-  a.download="CAFE_LEGENDAIRE_TODAY.csv";
+  a.download="SHIFT_SALES.csv";
   a.click();
 }
 
-function archiveDay(){
-  if(!confirm("Archive today and reset POS?")) return;
-  let today=new Date().toISOString().split("T")[0];
-  db.collection("archives").doc(today).set({date:today,sales:SALES});
+/* CLEAN POS */
+function cleanPOS(){
+  if(!confirm("Delete all sales and reset POS?"))return;
   db.collection("sales").get().then(snap=>snap.forEach(d=>d.ref.delete()));
-  cart=[];SHIFT="Morning";shift.innerHTML=`<option>${SHIFT}</option>`;
+  shift.value="Morning";
   reports.innerHTML="";
-  alert("Day archived successfully");
+  alert("POS cleaned");
 }
 </script>
 
