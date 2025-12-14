@@ -33,6 +33,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 
 <div class="container">
 
+<!-- SESSION -->
 <div class="panel">
 <select id="worker">
 <option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
@@ -42,6 +43,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="gray" onclick="endShift()">⏱ End Shift</button>
 </div>
 
+<!-- PRODUCTS -->
 <h3>Products</h3>
 <div class="filter">
 <button class="gray" onclick="filterCat('all')">All</button>
@@ -50,11 +52,12 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </div>
 
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
-<button class="gray" onclick="startFastScan()">📷 Scan Product</button>
+<button class="gray" onclick="startScanSell()">📷 Scan (Sell)</button>
 
 <div id="scanner" class="hidden"></div>
 <div class="products" id="products"></div>
 
+<!-- CART -->
 <div class="cart">
 <h3>Current Order</h3>
 <div id="cartItems"></div>
@@ -66,45 +69,122 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </div>
 
 <script>
+/* ================== DATA ================== */
 let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [];
 let cart = [];
 let filter = "all";
 let SHIFT = localStorage.getItem("shift") || "Morning";
 shift.innerHTML = `<option>${SHIFT}</option>`;
 
+/* ================== SAVE ================== */
 function save(){
 localStorage.setItem("products",JSON.stringify(PRODUCTS));
 localStorage.setItem("shift",SHIFT);
 }
 
+/* ================== SHIFT ================== */
 function endShift(){
 SHIFT = SHIFT==="Morning" ? "Evening" : "Morning";
-shift.innerHTML=`<option>${SHIFT}</option>`;
-save(); alert("Shift changed");
+shift.innerHTML = `<option>${SHIFT}</option>`;
+save(); alert("Shift changed to "+SHIFT);
 }
 
-/* 🔊 Beep sound */
-const beep = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
-
+/* ================== RENDER ================== */
 function render(){
 products.innerHTML="";
 PRODUCTS.forEach((p,i)=>{
 if(filter!=="all" && p.cat!==filter) return;
 let d=document.createElement("div");
 d.className="product";
-d.innerHTML=`<b>${p.name}</b><br>${p.price} DA<br>Stock: ${p.stock}`;
+d.innerHTML=`
+<div class="menu" onclick="productMenu(${i})">⋮</div>
+<b>${p.name}</b><br>
+<span class="small">${p.price} DA – ${p.cat}</span><br>
+<span class="small">Stock: ${p.stock}</span>`;
 d.onclick=()=>addToCart(i);
 products.appendChild(d);
 });
 }
 render();
 
+/* ================== FILTER ================== */
+function filterCat(c){filter=c;render();}
+
+/* ================== ADD PRODUCT (INVENTORY) ================== */
+function addProduct(){
+let name = prompt("Product name");
+if(!name) return;
+let price = parseInt(prompt("Price DA"));
+if(isNaN(price)) return;
+let cat = prompt("Category (Drink/Food)");
+let stock = parseInt(prompt("Initial stock"));
+if(isNaN(stock)) stock = 0;
+
+PRODUCTS.push({name,price,cat,stock,code:""});
+save(); render();
+}
+
+/* ================== PRODUCT MENU ================== */
+let scanTarget = null;
+
+function productMenu(i){
+let c = prompt(
+"1 = Modify\n"+
+"2 = Add / Remove stock\n"+
+"3 = Scan barcode\n"+
+"4 = Delete"
+);
+
+if(c==="1"){
+let n=prompt("Name",PRODUCTS[i].name);
+let p=parseInt(prompt("Price",PRODUCTS[i].price));
+let cat=prompt("Category",PRODUCTS[i].cat);
+if(n)PRODUCTS[i].name=n;
+if(!isNaN(p))PRODUCTS[i].price=p;
+if(cat)PRODUCTS[i].cat=cat;
+}
+
+if(c==="2"){
+let q=parseInt(prompt("Stock change (+ or -):"));
+if(!isNaN(q)){
+PRODUCTS[i].stock+=q;
+if(PRODUCTS[i].stock<0) PRODUCTS[i].stock=0;
+}
+}
+
+if(c==="3"){
+scanTarget = i;
+startScanAssign();
+return;
+}
+
+if(c==="4"){
+if(confirm("Delete product?")) PRODUCTS.splice(i,1);
+}
+
+save(); render();
+}
+
+/* ================== SCAN TO ASSIGN BARCODE ================== */
+function startScanAssign(){
+scanner.classList.remove("hidden");
+const qr=new Html5Qrcode("scanner");
+qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+qr.stop(); scanner.classList.add("hidden");
+if(scanTarget!==null){
+PRODUCTS[scanTarget].code = code;
+scanTarget = null;
+save(); render();
+}
+});
+}
+
+/* ================== CART ================== */
 function addToCart(i){
 let p=PRODUCTS[i];
 if(p.stock<=0) return alert("Out of stock");
 p.stock--;
 cart.push({index:i,...p});
-beep.play();
 save(); render(); renderCart();
 }
 
@@ -133,25 +213,19 @@ function checkout(){
 cart=[]; save(); renderCart();
 }
 
-/* 📷 FAST SCAN MODE */
-let scanner;
-function startFastScan(){
-scanner=document.getElementById("scanner");
+/* ================== SCAN TO SELL ================== */
+const beep = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
+function startScanSell(){
 scanner.classList.remove("hidden");
-
 const qr=new Html5Qrcode("scanner");
 qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
 let matches = PRODUCTS.filter(p=>p.code===code);
-
-if(matches.length===0){
-alert("Product not found"); return;
-}
-if(matches.length>1){
-alert("Barcode conflict!"); return;
-}
+if(matches.length===0) return alert("Product not found");
+if(matches.length>1) return alert("Barcode conflict");
 
 let index = PRODUCTS.findIndex(p=>p.code===code);
 addToCart(index);
+beep.play();
 });
 }
 </script>
