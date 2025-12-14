@@ -5,23 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cafeteria POS</title>
 <meta name="theme-color" content="#222">
+<script src="https://unpkg.com/html5-qrcode"></script>
+
 <style>
 body{margin:0;font-family:Arial;background:#f4f4f4}
 header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
 .container{padding:10px}
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-.product{background:#fff;padding:12px;text-align:center;border-radius:8px;
-box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold}
+.product{background:#fff;padding:12px;border-radius:8px;
+box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold;text-align:center}
+.small{font-size:13px;color:#555}
 .cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
 .cart-item{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:4px 0}
-button{width:100%;padding:12px;margin-top:8px;border:none;border-radius:6px;font-size:16px;color:#fff}
+button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font-size:15px;color:#fff}
 .green{background:#28a745}
 .red{background:#dc3545}
 .blue{background:#007bff}
 .gray{background:#6c757d}
-select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
+.filter{display:flex;gap:6px;margin-top:8px}
+.filter button{flex:1}
 .hidden{display:none}
-.small{font-size:13px;color:#555}
+#scanner{width:100%;margin-top:10px}
 </style>
 </head>
 <body>
@@ -31,18 +35,11 @@ select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 <div class="container">
 
 <div class="panel">
-<b>Worker</b>
 <select id="worker">
-<option>Admin 1</option>
-<option>Admin 2</option>
-<option>Admin 3</option>
-<option>Admin 4</option>
-<option>Admin 5</option>
-<option>Admin 6</option>
-<option>Admin 7</option>
+<option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
+<option>Admin 4</option><option>Admin 5</option><option>Admin 6</option><option>Admin 7</option>
 </select>
 
-<b>Shift</b>
 <select id="shift">
 <option>Morning</option>
 <option>Evening</option>
@@ -50,7 +47,17 @@ select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 </div>
 
 <h3>Products</h3>
+
+<div class="filter">
+<button class="gray" onclick="filterCat('all')">All</button>
+<button class="blue" onclick="filterCat('Drink')">Drinks</button>
+<button class="green" onclick="filterCat('Food')">Food</button>
+</div>
+
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
+<button class="gray" onclick="startScan()">📷 Scan Barcode</button>
+
+<div id="scanner" class="hidden"></div>
 
 <div class="products" id="products"></div>
 
@@ -62,126 +69,83 @@ select,input{width:100%;padding:10px;margin-top:8px;font-size:16px}
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
-<div class="panel">
-<input type="password" id="pin" placeholder="Admin PIN">
-<button class="gray" onclick="openAdmin()">🔐 Admin</button>
-
-<div id="admin" class="hidden">
-<button class="gray" onclick="dailyReset()">🔄 Daily Reset</button>
-<button class="gray" onclick="exportCSV()">📥 Export CSV</button>
-<div id="reports"></div>
-</div>
-</div>
-
 </div>
 
 <script>
-const ADMIN_PIN = "1234";
-let cart = [];
+let cart=[];
+let filter="all";
 
-// PRODUCTS WITH NAME + PRICE
 let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [
-  {name:"Coffee", price:30},
-  {name:"Tea", price:40},
-  {name:"Sandwich", price:200}
+ {name:"Coffee",price:30,cat:"Drink",code:"111"},
+ {name:"Tea",price:40,cat:"Drink",code:"222"},
+ {name:"Sandwich",price:200,cat:"Food",code:"333"}
 ];
 
-const productsDiv = document.getElementById("products");
+function save(){localStorage.setItem("products",JSON.stringify(PRODUCTS))}
 
-function saveProducts(){
-  localStorage.setItem("products", JSON.stringify(PRODUCTS));
+function render(){
+ let pDiv=document.getElementById("products");
+ pDiv.innerHTML="";
+ PRODUCTS.forEach((p,i)=>{
+  if(filter!=="all" && p.cat!==filter) return;
+  let d=document.createElement("div");
+  d.className="product";
+  d.innerHTML=`${p.name}<br><span class="small">${p.price} DA – ${p.cat}</span>`;
+  d.onclick=()=>{cart.push(p);renderCart()};
+  d.oncontextmenu=e=>{
+    e.preventDefault();
+    if(confirm("Delete product?")){
+      PRODUCTS.splice(i,1);
+      save();render();
+    }
+  };
+  pDiv.appendChild(d);
+ });
 }
+render();
 
-function renderProducts(){
-  productsDiv.innerHTML="";
-  PRODUCTS.forEach((p,i)=>{
-    let d=document.createElement("div");
-    d.className="product";
-    d.innerHTML = `${p.name}<br><span class="small">${p.price} DA</span>`;
-    d.onclick=()=>{cart.push(p);renderCart()};
-    productsDiv.appendChild(d);
-  });
-}
-
-renderProducts();
+function filterCat(c){filter=c;render()}
 
 function addProduct(){
-  let name = prompt("Product name:");
-  if(!name) return;
-
-  let price = prompt("Product price (DA):");
-  price = parseInt(price);
-  if(isNaN(price) || price<=0) return alert("Invalid price");
-
-  PRODUCTS.push({name, price});
-  saveProducts();
-  renderProducts();
+ let name=prompt("Product name");
+ if(!name) return;
+ let price=parseInt(prompt("Price DA"));
+ if(isNaN(price)) return;
+ let cat=prompt("Category (Drink/Food)");
+ let code=prompt("Barcode (optional)")||"";
+ PRODUCTS.push({name,price,cat,code});
+ save();render();
 }
 
 function renderCart(){
-  let c=document.getElementById("cartItems");
-  c.innerHTML="";
-  let t=0;
-  cart.forEach((p,i)=>{
-    t+=p.price;
-    let d=document.createElement("div");
-    d.className="cart-item";
-    d.innerHTML=`${p.name} - ${p.price} DA <span style='color:red' onclick='removeItem(${i})'>✖</span>`;
-    c.appendChild(d);
-  });
-  document.getElementById("total").innerText=t;
+ let c=document.getElementById("cartItems");
+ c.innerHTML="";
+ let t=0;
+ cart.forEach((p,i)=>{
+  t+=p.price;
+  c.innerHTML+=`${p.name} - ${p.price} DA <span onclick="remove(${i})">✖</span><br>`;
+ });
+ document.getElementById("total").innerText=t;
 }
-
-function removeItem(i){cart.splice(i,1);renderCart()}
+function remove(i){cart.splice(i,1);renderCart()}
 function clearCart(){cart=[];renderCart()}
 
 function checkout(){
-  if(cart.length===0) return alert("No items");
-  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
-  sales.push({
-    date:new Date().toLocaleString(),
-    worker:worker.value,
-    shift:shift.value,
-    items:cart,
-    total:cart.reduce((a,b)=>a+b.price,0)
-  });
-  localStorage.setItem("sales",JSON.stringify(sales));
-  clearCart();
+ if(cart.length==0) return;
+ cart=[];renderCart();
 }
 
-function openAdmin(){
-  if(pin.value!==ADMIN_PIN) return alert("Wrong PIN");
-  admin.classList.toggle("hidden");
-  renderReports();
-}
-
-function dailyReset(){
-  if(confirm("Reset all sales?")){
-    localStorage.removeItem("sales");
-    renderReports();
+function startScan(){
+ document.getElementById("scanner").classList.remove("hidden");
+ const qr=new Html5Qrcode("scanner");
+ qr.start({facingMode:"environment"},{fps:10,qrbox:250},
+  txt=>{
+   let p=PRODUCTS.find(x=>x.code===txt);
+   if(p){cart.push(p);renderCart();}
+   qr.stop();
+   document.getElementById("scanner").classList.add("hidden");
   }
-}
-
-function exportCSV(){
-  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
-  let csv="Date,Worker,Shift,Product,Price\\n";
-  sales.forEach(s=>{
-    s.items.forEach(i=>{
-      csv+=`${s.date},${s.worker},${s.shift},${i.name},${i.price}\\n`;
-    });
-  });
-  let blob=new Blob([csv],{type:"text/csv"});
-  let a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="sales.csv";
-  a.click();
-}
-
-function renderReports(){
-  let sales=JSON.parse(localStorage.getItem("sales")||"[]");
-  let total=0;
-  sales.forEach(s=>total+=s.total);
-  reports.innerHTML=`<b>Total Sales:</b> ${total} DA`;
+ );
 }
 </script>
 
