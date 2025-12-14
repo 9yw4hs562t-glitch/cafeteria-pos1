@@ -5,10 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CAFE LEGENDAIRE</title>
 <meta name="theme-color" content="#3a2a1d">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- Barcode -->
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-body{margin:0;font-family:Arial,sans-serif}
+body{margin:0;font-family:Arial}
 body::before{
   content:"";
   position:fixed;
@@ -41,7 +47,6 @@ header{
 button{
   width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;
   font-size:15px;color:#fff;cursor:pointer;
-  box-shadow:0 3px 6px rgba(0,0,0,.25)
 }
 .green{background:#28a745}
 .red{background:#dc3545}
@@ -70,6 +75,7 @@ button{
 <option>Admin 6</option>
 <option>Admin 7</option>
 </select>
+
 <select id="shift"></select>
 <button class="gray" onclick="endShift()">⏱ End Shift</button>
 </div>
@@ -108,7 +114,7 @@ button{
 <button class="blue" onclick="report('month')">Month</button>
 
 <button class="blue" onclick="exportExcel()">📥 Export Excel</button>
-<button class="red" onclick="cleanPOS()">🧹 Clean POS (After Export)</button>
+<button class="red" onclick="archiveDay()">📅 Archive & Reset Day</button>
 
 <div id="reports"></div>
 </div>
@@ -117,178 +123,202 @@ button{
 </div>
 
 <script>
-const ADMIN_PIN="5554";
-let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[];
-let SALES=JSON.parse(localStorage.getItem("sales"))||[];
-let cart=[],filter="all";
-let SHIFT=localStorage.getItem("shift")||"Morning";
-shift.innerHTML=`<option>${SHIFT}</option>`;
+/* ================= FIREBASE CONFIG ================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCdWSIrpEwi4o83WVNoMd2D36W0ngaJC28",
+  authDomain: "cafe-legendaire-pos.firebaseapp.com",
+  projectId: "cafe-legendaire-pos",
+  storageBucket: "cafe-legendaire-pos.firebasestorage.app",
+  messagingSenderId: "548449258422",
+  appId: "1:548449258422:web:ab140347d114bf9d82cf17"
+};
 
-function save(){
-localStorage.setItem("products",JSON.stringify(PRODUCTS));
-localStorage.setItem("sales",JSON.stringify(SALES));
-localStorage.setItem("shift",SHIFT);
-}
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
-function endShift(){
-SHIFT=SHIFT==="Morning"?"Evening":"Morning";
-shift.innerHTML=`<option>${SHIFT}</option>`;
-save();alert("Shift changed");
-}
+/* ================= DATA ================= */
+const ADMIN_PIN = "5554";
+let PRODUCTS = [];
+let SALES = [];
+let cart = [];
+let filter = "all";
+let SHIFT = "Morning";
 
+shift.innerHTML = `<option>${SHIFT}</option>`;
+
+/* ================= REALTIME SYNC ================= */
+db.collection("products").onSnapshot(snap=>{
+  PRODUCTS = snap.docs.map(d=>({...d.data(), id:d.id}));
+  render();
+});
+
+db.collection("sales").onSnapshot(snap=>{
+  SALES = snap.docs.map(d=>d.data());
+});
+
+/* ================= UI ================= */
 function setFilter(c){filter=c;render();}
+function endShift(){
+  SHIFT = SHIFT==="Morning"?"Evening":"Morning";
+  shift.innerHTML=`<option>${SHIFT}</option>`;
+}
 
 function render(){
-products.innerHTML="";
-PRODUCTS.forEach((p,i)=>{
-if(filter!=="all"&&p.cat!==filter)return;
-let d=document.createElement("div");
-d.className="product";
-d.innerHTML=`<div class="menu" onclick="productMenu(${i})">⋮</div>
-<b>${p.name}</b><br>
-<span class="small">${p.price} DA – ${p.cat}</span><br>
-<span class="small">Stock: ${p.stock}</span>`;
-d.onclick=()=>addToCart(i);
-products.appendChild(d);
-});
+  products.innerHTML="";
+  PRODUCTS.forEach(p=>{
+    if(filter!=="all" && p.cat!==filter) return;
+    let d=document.createElement("div");
+    d.className="product";
+    d.innerHTML=`
+      <div class="menu" onclick="productMenu('${p.id}')">⋮</div>
+      <b>${p.name}</b><br>
+      <span class="small">${p.price} DA – ${p.cat}</span><br>
+      <span class="small">Stock: ${p.stock}</span>`;
+    d.onclick=()=>addToCart(p.id);
+    products.appendChild(d);
+  });
 }
-render();
 
+/* ================= INVENTORY ================= */
 function addProduct(){
-let name=prompt("Name");if(!name)return;
-let price=parseInt(prompt("Price"));if(isNaN(price))return;
-let cat=prompt("Category");
-let stock=parseInt(prompt("Stock"))||0;
-PRODUCTS.push({name,price,cat,stock,code:""});
-save();render();
+  let name=prompt("Name"); if(!name) return;
+  let price=parseInt(prompt("Price")); if(isNaN(price)) return;
+  let cat=prompt("Category");
+  let stock=parseInt(prompt("Stock"))||0;
+  db.collection("products").doc(name).set({name,price,cat,stock,code:""});
 }
 
-let scanAssignIndex=null;
-function productMenu(i){
-let c=prompt("1 Modify\n2 Stock +/-\n3 Scan barcode\n4 Delete");
-if(c==="1"){
-let n=prompt("Name",PRODUCTS[i].name);
-let p=parseInt(prompt("Price",PRODUCTS[i].price));
-if(n)PRODUCTS[i].name=n;
-if(!isNaN(p))PRODUCTS[i].price=p;
-}
-if(c==="2"){
-let q=parseInt(prompt("Stock change"));
-if(!isNaN(q)){
-PRODUCTS[i].stock+=q;
-if(PRODUCTS[i].stock<0)PRODUCTS[i].stock=0;
-}
-}
-if(c==="3"){scanAssignIndex=i;scanAssign();return;}
-if(c==="4"){if(confirm("Delete?"))PRODUCTS.splice(i,1);}
-save();render();
+let scanAssignId=null;
+function productMenu(id){
+  let p=PRODUCTS.find(x=>x.id===id);
+  let c=prompt("1 Modify\n2 Stock +/-\n3 Scan barcode\n4 Delete");
+  if(c==="1"){
+    let n=prompt("Name",p.name);
+    let pr=parseInt(prompt("Price",p.price));
+    if(n)p.name=n;
+    if(!isNaN(pr))p.price=pr;
+  }
+  if(c==="2"){
+    let q=parseInt(prompt("Stock change"));
+    if(!isNaN(q)){p.stock+=q;if(p.stock<0)p.stock=0;}
+  }
+  if(c==="3"){scanAssignId=id;scanAssign();return;}
+  if(c==="4"){if(confirm("Delete?")) db.collection("products").doc(id).delete();return;}
+  db.collection("products").doc(id).set(p);
 }
 
-function addToCart(i){
-if(PRODUCTS[i].stock<=0)return alert("Out of stock");
-PRODUCTS[i].stock--;
-cart.push({index:i,...PRODUCTS[i]});
-save();render();renderCart();
+/* ================= CART ================= */
+function addToCart(id){
+  let p=PRODUCTS.find(x=>x.id===id);
+  if(p.stock<=0) return alert("Out of stock");
+  p.stock--;
+  db.collection("products").doc(id).set(p);
+  cart.push(p);
+  render();renderCart();
 }
 
 function renderCart(){
-cartItems.innerHTML="";let t=0;
-cart.forEach((p,i)=>{
-t+=p.price;
-cartItems.innerHTML+=`${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
-});
-total.innerText=t;
+  cartItems.innerHTML="";let t=0;
+  cart.forEach((p,i)=>{
+    t+=p.price;
+    cartItems.innerHTML+=`${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
+  });
+  total.innerText=t;
 }
 
 function removeItem(i){
-PRODUCTS[cart[i].index].stock++;
-cart.splice(i,1);
-save();render();renderCart();
+  let p=cart[i];
+  p.stock++;
+  db.collection("products").doc(p.id).set(p);
+  cart.splice(i,1);
+  render();renderCart();
 }
 
 function clearCart(){
-cart.forEach(i=>PRODUCTS[i.index].stock++);
-cart=[];save();render();renderCart();
+  cart.forEach(p=>{
+    p.stock++;
+    db.collection("products").doc(p.id).set(p);
+  });
+  cart=[];render();renderCart();
 }
 
 function checkout(){
-if(!cart.length)return;
-SALES.push({
-date:new Date().toLocaleDateString(),
-time:new Date().toLocaleTimeString(),
-shift:SHIFT,
-admin:worker.value,
-total:cart.reduce((a,b)=>a+b.price,0)
-});
-cart=[];save();render();renderCart();
+  if(!cart.length)return;
+  db.collection("sales").add({
+    date:new Date().toLocaleDateString(),
+    time:new Date().toLocaleTimeString(),
+    shift:SHIFT,
+    admin:worker.value,
+    total:cart.reduce((a,b)=>a+b.price,0)
+  });
+  cart=[];render();renderCart();
 }
 
+/* ================= SCAN SELL ================= */
 let scanOpen=false,scanInstance=null;
-const beep=new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
 function toggleScanSell(){
-if(scanOpen){
-scanInstance.stop();scanner.classList.add("hidden");scanOpen=false;return;
-}
-scanner.classList.remove("hidden");
-scanInstance=new Html5Qrcode("scanner");
-scanInstance.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
-let i=PRODUCTS.findIndex(p=>p.code===code);
-if(i===-1)return alert("Not found");
-addToCart(i);beep.play();
-});
-scanOpen=true;
+  if(scanOpen){
+    scanInstance.stop();scanner.classList.add("hidden");scanOpen=false;return;
+  }
+  scanner.classList.remove("hidden");
+  scanInstance=new Html5Qrcode("scanner");
+  scanInstance.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    let p=PRODUCTS.find(x=>x.code===code);
+    if(!p) return alert("Not found");
+    addToCart(p.id);
+  });
+  scanOpen=true;
 }
 
+/* ================= SCAN ASSIGN ================= */
 function scanAssign(){
-scanner.classList.remove("hidden");
-let qr=new Html5Qrcode("scanner");
-qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
-qr.stop();scanner.classList.add("hidden");
-PRODUCTS[scanAssignIndex].code=code;
-scanAssignIndex=null;
-save();render();
-});
+  scanner.classList.remove("hidden");
+  let qr=new Html5Qrcode("scanner");
+  qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    qr.stop();scanner.classList.add("hidden");
+    let p=PRODUCTS.find(x=>x.id===scanAssignId);
+    p.code=code;
+    db.collection("products").doc(p.id).set(p);
+  });
 }
 
+/* ================= ADMIN ================= */
 function openAdmin(){
-if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
-admin.classList.toggle("hidden");
+  if(pin.value!==ADMIN_PIN) return alert("Wrong PIN");
+  admin.classList.toggle("hidden");
 }
 
 function report(type){
-let now=new Date(),sum=0,count=0;
-SALES.forEach(s=>{
-let d=new Date(s.date);
-if(type==="shift"&&s.shift!==SHIFT)return;
-if(type==="day"&&d.toDateString()!==now.toDateString())return;
-if(type==="week"&&now-d>7*86400000)return;
-if(type==="month"&&d.getMonth()!==now.getMonth())return;
-sum+=s.total;count++;
-});
-reports.innerHTML=`Orders: ${count}<br>Total: ${sum} DA`;
+  let now=new Date(),sum=0,count=0;
+  SALES.forEach(s=>{
+    let d=new Date(s.date);
+    if(type==="shift"&&s.shift!==SHIFT)return;
+    if(type==="day"&&d.toDateString()!==now.toDateString())return;
+    if(type==="week"&&now-d>7*86400000)return;
+    if(type==="month"&&d.getMonth()!==now.getMonth())return;
+    sum+=s.total;count++;
+  });
+  reports.innerHTML=`Orders: ${count}<br>Total: ${sum} DA`;
 }
 
+/* ================= EXPORT & ARCHIVE ================= */
 function exportExcel(){
-let csv="Date,Time,Shift,Admin,Total\n";
-SALES.forEach(s=>{
-csv+=`${s.date},${s.time},${s.shift},${s.admin},${s.total}\n`;
-});
-let a=document.createElement("a");
-a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-a.download="CAFE_LEGENDAIRE_SALES.csv";
-a.click();
+  let csv="Date,Time,Shift,Admin,Total\n";
+  SALES.forEach(s=>csv+=`${s.date},${s.time},${s.shift},${s.admin},${s.total}\n`);
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="CAFE_LEGENDAIRE_TODAY.csv";
+  a.click();
 }
 
-function cleanPOS(){
-if(!confirm("Export done? This will clear sales & reset POS."))return;
-SALES=[];
-cart=[];
-SHIFT="Morning";
-shift.innerHTML=`<option>${SHIFT}</option>`;
-save();
-render();renderCart();
-reports.innerHTML="";
-alert("POS cleaned and ready for new day");
+function archiveDay(){
+  if(!confirm("Archive today and reset POS?")) return;
+  let today=new Date().toISOString().split("T")[0];
+  db.collection("archives").doc(today).set({date:today,sales:SALES});
+  db.collection("sales").get().then(snap=>snap.forEach(d=>d.ref.delete()));
+  cart=[];SHIFT="Morning";shift.innerHTML=`<option>${SHIFT}</option>`;
+  reports.innerHTML="";
+  alert("Day archived successfully");
 }
 </script>
 
