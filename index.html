@@ -11,53 +11,51 @@
 /* ===== BACKGROUND ===== */
 body{
   margin:0;
-  font-family:Arial;
+  font-family:Arial, sans-serif;
 }
 body::before{
   content:"";
   position:fixed;
-  top:0;left:0;
-  width:100%;
-  height:100%;
+  inset:0;
   background:url("IMG_0069.jpeg") center/cover no-repeat;
   filter:blur(6px) brightness(0.9);
-  z-index:-2;
+  z-index:-1;
 }
 
-/* ===== UI ===== */
+/* ===== HEADER ===== */
 header{
   background:rgba(34,34,34,0.9);
   color:#fff;
   padding:14px;
   text-align:center;
-  font-size:20px;
+  font-size:22px;
   font-weight:bold;
   letter-spacing:1px;
 }
 
+/* ===== LAYOUT ===== */
 .container{padding:10px}
+
+.panel,.product,.cart{
+  background:rgba(255,255,255,0.93);
+  backdrop-filter:blur(2px);
+  border-radius:8px;
+  padding:10px;
+  margin-top:12px;
+  box-shadow:0 3px 8px rgba(0,0,0,0.25);
+}
 
 .products{
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:10px;
-  margin-top:10px
-}
-
-.product,.panel,.cart{
-  background:rgba(255,255,255,0.92);
-  backdrop-filter:blur(2px);
-  padding:10px;
-  border-radius:8px;
-  box-shadow:0 3px 8px rgba(0,0,0,.2);
-  margin-top:12px;
 }
 
 .product{position:relative}
 
 .menu{
   position:absolute;
-  top:5px;
+  top:6px;
   right:8px;
   font-size:18px;
   cursor:pointer;
@@ -65,6 +63,7 @@ header{
 
 .small{font-size:12px;color:#444}
 
+/* ===== BUTTONS ===== */
 button{
   width:100%;
   padding:10px;
@@ -73,7 +72,8 @@ button{
   border-radius:6px;
   font-size:15px;
   color:#fff;
-  box-shadow:0 3px 6px rgba(0,0,0,.25);
+  cursor:pointer;
+  box-shadow:0 3px 6px rgba(0,0,0,0.25);
 }
 
 .green{background:#28a745}
@@ -84,12 +84,12 @@ button{
 .filter{
   display:flex;
   gap:6px;
-  margin-top:8px
+  margin:10px 0;
 }
 .filter button{flex:1}
 
 .hidden{display:none}
-#scanner{width:100%;margin-top:10px}
+#scanner{margin-top:10px}
 </style>
 </head>
 
@@ -119,9 +119,9 @@ button{
 <h3>Products</h3>
 
 <div class="filter">
-<button class="gray" onclick="filterCat('all')">All</button>
-<button class="blue" onclick="filterCat('Drink')">Drinks</button>
-<button class="green" onclick="filterCat('Food')">Food</button>
+<button class="gray" onclick="setFilter('all')">All</button>
+<button class="blue" onclick="setFilter('Drink')">Drinks</button>
+<button class="green" onclick="setFilter('Food')">Food</button>
 </div>
 
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
@@ -150,7 +150,6 @@ button{
 <button class="blue" onclick="report('day')">Day</button>
 <button class="blue" onclick="report('week')">Week</button>
 <button class="blue" onclick="report('month')">Month</button>
-
 <button class="blue" onclick="exportExcel()">📥 Export Excel</button>
 <div id="reports"></div>
 </div>
@@ -160,121 +159,223 @@ button{
 
 <script>
 /* ===== DATA ===== */
-const ADMIN_PIN="5554";
-let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[];
-let SALES=JSON.parse(localStorage.getItem("sales"))||[];
-let cart=[],filter="all";
-let SHIFT=localStorage.getItem("shift")||"Morning";
+const ADMIN_PIN = "5554";
+let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [];
+let SALES = JSON.parse(localStorage.getItem("sales")) || [];
+let cart = [];
+let filter = "all";
+let SHIFT = localStorage.getItem("shift") || "Morning";
 
-shift.innerHTML=`<option>${SHIFT}</option>`;
+shift.innerHTML = `<option>${SHIFT}</option>`;
 
 /* ===== SAVE ===== */
 function save(){
-localStorage.setItem("products",JSON.stringify(PRODUCTS));
-localStorage.setItem("sales",JSON.stringify(SALES));
-localStorage.setItem("shift",SHIFT);
+  localStorage.setItem("products", JSON.stringify(PRODUCTS));
+  localStorage.setItem("sales", JSON.stringify(SALES));
+  localStorage.setItem("shift", SHIFT);
 }
 
 /* ===== SHIFT ===== */
 function endShift(){
-SHIFT=SHIFT==="Morning"?"Evening":"Morning";
-shift.innerHTML=`<option>${SHIFT}</option>`;
-save();alert("Shift changed to "+SHIFT);
+  SHIFT = SHIFT === "Morning" ? "Evening" : "Morning";
+  shift.innerHTML = `<option>${SHIFT}</option>`;
+  save();
+  alert("Shift changed to " + SHIFT);
 }
 
-/* ===== PRODUCTS ===== */
+/* ===== FILTER ===== */
+function setFilter(c){
+  filter = c;
+  render();
+}
+
+/* ===== RENDER PRODUCTS ===== */
 function render(){
-products.innerHTML="";
-PRODUCTS.forEach((p,i)=>{
-if(filter!=="all" && p.cat!==filter)return;
-let d=document.createElement("div");
-d.className="product";
-d.innerHTML=`
-<div class="menu" onclick="productMenu(${i})">⋮</div>
-<b>${p.name}</b><br>
-<span class="small">${p.price} DA – ${p.cat}</span><br>
-<span class="small">Stock: ${p.stock}</span>`;
-d.onclick=()=>addToCart(i);
-products.appendChild(d);
-});
+  products.innerHTML = "";
+  PRODUCTS.forEach((p,i)=>{
+    if(filter !== "all" && p.cat !== filter) return;
+
+    let d = document.createElement("div");
+    d.className = "product";
+    d.innerHTML = `
+      <div class="menu" onclick="productMenu(${i})">⋮</div>
+      <b>${p.name}</b><br>
+      <span class="small">${p.price} DA – ${p.cat}</span><br>
+      <span class="small">Stock: ${p.stock}</span>
+    `;
+    d.onclick = () => addToCart(i);
+    products.appendChild(d);
+  });
 }
 render();
 
-function filterCat(c){filter=c;render();}
-
+/* ===== ADD PRODUCT (INVENTORY) ===== */
 function addProduct(){
-let name=prompt("Product name");
-if(!name)return;
-let price=parseInt(prompt("Price DA"));
-if(isNaN(price))return;
-let cat=prompt("Category (Drink/Food)");
-let stock=parseInt(prompt("Initial stock"))||0;
-PRODUCTS.push({name,price,cat,stock,code:""});
-save();render();
+  let name = prompt("Product name");
+  if(!name) return;
+  let price = parseInt(prompt("Price DA"));
+  if(isNaN(price)) return;
+  let cat = prompt("Category (Drink/Food)");
+  let stock = parseInt(prompt("Initial stock")) || 0;
+  PRODUCTS.push({name, price, cat, stock, code:""});
+  save(); render();
 }
 
 /* ===== PRODUCT MENU ===== */
-let scanAssignIndex=null;
+let scanAssignIndex = null;
 
 function productMenu(i){
-let c=prompt("1 Modify\n2 Stock +/-\n3 Scan barcode\n4 Delete");
-if(c==="1"){
-let n=prompt("Name",PRODUCTS[i].name);
-let p=parseInt(prompt("Price",PRODUCTS[i].price));
-if(n)PRODUCTS[i].name=n;
-if(!isNaN(p))PRODUCTS[i].price=p;
-}
-if(c==="2"){
-let q=parseInt(prompt("Stock change + / -"));
-if(!isNaN(q)){
-PRODUCTS[i].stock+=q;
-if(PRODUCTS[i].stock<0)PRODUCTS[i].stock=0;
-}
-}
-if(c==="3"){
-scanAssignIndex=i;
-toggleScanAssign();return;
-}
-if(c==="4"){
-if(confirm("Delete product?"))PRODUCTS.splice(i,1);
-}
-save();render();
+  let c = prompt(
+    "1 = Modify\n"+
+    "2 = Stock + / -\n"+
+    "3 = Scan barcode\n"+
+    "4 = Delete"
+  );
+
+  if(c==="1"){
+    let n = prompt("Name", PRODUCTS[i].name);
+    let p = parseInt(prompt("Price", PRODUCTS[i].price));
+    if(n) PRODUCTS[i].name = n;
+    if(!isNaN(p)) PRODUCTS[i].price = p;
+  }
+
+  if(c==="2"){
+    let q = parseInt(prompt("Stock change (+ or -)"));
+    if(!isNaN(q)){
+      PRODUCTS[i].stock += q;
+      if(PRODUCTS[i].stock < 0) PRODUCTS[i].stock = 0;
+    }
+  }
+
+  if(c==="3"){
+    scanAssignIndex = i;
+    scanAssign();
+    return;
+  }
+
+  if(c==="4"){
+    if(confirm("Delete product?")) PRODUCTS.splice(i,1);
+  }
+
+  save(); render();
 }
 
 /* ===== CART ===== */
 function addToCart(i){
-if(PRODUCTS[i].stock<=0)return alert("Out of stock");
-PRODUCTS[i].stock--;
-cart.push({index:i,...PRODUCTS[i]});
-save();render();renderCart();
+  if(PRODUCTS[i].stock <= 0) return alert("Out of stock");
+  PRODUCTS[i].stock--;
+  cart.push({index:i, ...PRODUCTS[i]});
+  save(); render(); renderCart();
 }
 
 function renderCart(){
-cartItems.innerHTML="";
-let t=0;
-cart.forEach((p,i)=>{
-t+=p.price;
-cartItems.innerHTML+=`${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
-});
-total.innerText=t;
+  cartItems.innerHTML = "";
+  let t = 0;
+  cart.forEach((p,i)=>{
+    t += p.price;
+    cartItems.innerHTML += `${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
+  });
+  total.innerText = t;
 }
 
 function removeItem(i){
-PRODUCTS[cart[i].index].stock++;
-cart.splice(i,1);
-save();render();renderCart();
+  PRODUCTS[cart[i].index].stock++;
+  cart.splice(i,1);
+  save(); render(); renderCart();
 }
 
 function clearCart(){
-cart.forEach(i=>PRODUCTS[i.index].stock++);
-cart=[];save();render();renderCart();
+  cart.forEach(i=>PRODUCTS[i.index].stock++);
+  cart = [];
+  save(); render(); renderCart();
 }
 
 function checkout(){
-if(!cart.length)return;
-SALES.push({
-date:new Date().toLocaleDateString(),
-time:new Date().toLocaleTimeString(),
-shift:SHIFT,
-admin:worker.value,
-total:cart.reduce((a,b)=>a+b.price,0
+  if(!cart.length) return;
+  SALES.push({
+    date:new Date().toLocaleDateString(),
+    time:new Date().toLocaleTimeString(),
+    shift:SHIFT,
+    admin:worker.value,
+    total:cart.reduce((a,b)=>a+b.price,0)
+  });
+  cart = [];
+  save(); render(); renderCart();
+}
+
+/* ===== SCAN SELL (TOGGLE) ===== */
+let scanOpen=false, scanInstance=null;
+const beep = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
+
+function toggleScanSell(){
+  if(scanOpen){
+    scanInstance.stop();
+    scanner.classList.add("hidden");
+    scanOpen=false;
+    return;
+  }
+  scanner.classList.remove("hidden");
+  scanInstance = new Html5Qrcode("scanner");
+  scanInstance.start(
+    {facingMode:"environment"},
+    {fps:10, qrbox:250},
+    code=>{
+      let index = PRODUCTS.findIndex(p=>p.code===code);
+      if(index===-1) return alert("Product not found");
+      addToCart(index);
+      beep.play();
+    }
+  );
+  scanOpen=true;
+}
+
+/* ===== SCAN ASSIGN BARCODE ===== */
+function scanAssign(){
+  scanner.classList.remove("hidden");
+  let qr = new Html5Qrcode("scanner");
+  qr.start(
+    {facingMode:"environment"},
+    {fps:10, qrbox:250},
+    code=>{
+      qr.stop();
+      scanner.classList.add("hidden");
+      PRODUCTS[scanAssignIndex].code = code;
+      scanAssignIndex = null;
+      save(); render();
+    }
+  );
+}
+
+/* ===== ADMIN ===== */
+function openAdmin(){
+  if(pin.value !== ADMIN_PIN) return alert("Wrong PIN");
+  admin.classList.toggle("hidden");
+}
+
+function report(type){
+  let now=new Date(), sum=0, count=0;
+  SALES.forEach(s=>{
+    let d=new Date(s.date);
+    if(type==="shift" && s.shift!==SHIFT) return;
+    if(type==="day" && d.toDateString()!==now.toDateString()) return;
+    if(type==="week" && now-d>7*86400000) return;
+    if(type==="month" && d.getMonth()!==now.getMonth()) return;
+    sum+=s.total; count++;
+  });
+  reports.innerHTML = `Orders: ${count}<br>Total: ${sum} DA`;
+}
+
+function exportExcel(){
+  let csv="Date,Time,Shift,Admin,Total\n";
+  SALES.forEach(s=>{
+    csv+=`${s.date},${s.time},${s.shift},${s.admin},${s.total}\n`;
+  });
+  let a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download="CAFE_LEGENDAIRE_SALES.csv";
+  a.click();
+}
+</script>
+
+</body>
+</html>
