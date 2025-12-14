@@ -14,7 +14,7 @@ header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
 .product{background:#fff;padding:12px;border-radius:8px;
 box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold;text-align:center}
-.small{font-size:13px;color:#555}
+.small{font-size:12px;color:#555}
 .cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
 .cart-item{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:4px 0}
 button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font-size:15px;color:#fff}
@@ -26,6 +26,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 .filter button{flex:1}
 .hidden{display:none}
 #scanner{width:100%;margin-top:10px}
+.report{font-size:14px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -34,6 +35,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 
 <div class="container">
 
+<!-- SESSION -->
 <div class="panel">
 <select id="worker">
 <option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
@@ -46,8 +48,8 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </select>
 </div>
 
+<!-- PRODUCTS -->
 <h3>Products</h3>
-
 <div class="filter">
 <button class="gray" onclick="filterCat('all')">All</button>
 <button class="blue" onclick="filterCat('Drink')">Drinks</button>
@@ -58,9 +60,9 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="gray" onclick="startScan()">📷 Scan Barcode</button>
 
 <div id="scanner" class="hidden"></div>
-
 <div class="products" id="products"></div>
 
+<!-- CART -->
 <div class="cart">
 <h3>Current Order</h3>
 <div id="cartItems"></div>
@@ -69,83 +71,120 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
+<!-- ADMIN -->
+<div class="panel">
+<input type="password" id="pin" placeholder="Admin PIN">
+<button class="gray" onclick="openAdmin()">🔐 Admin</button>
+
+<div id="admin" class="hidden">
+<button class="blue" onclick="showReport('half')">Half-Day</button>
+<button class="blue" onclick="showReport('day')">Day</button>
+<button class="blue" onclick="showReport('week')">Week</button>
+<button class="blue" onclick="showReport('month')">Month</button>
+<button class="red" onclick="resetSales()">Reset Sales</button>
+<div id="reports" class="report"></div>
+</div>
+</div>
+
 </div>
 
 <script>
-let cart=[];
-let filter="all";
+const ADMIN_PIN="1234";
+let cart=[],filter="all";
 
-let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [
+let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[
  {name:"Coffee",price:30,cat:"Drink",code:"111"},
  {name:"Tea",price:40,cat:"Drink",code:"222"},
  {name:"Sandwich",price:200,cat:"Food",code:"333"}
 ];
 
-function save(){localStorage.setItem("products",JSON.stringify(PRODUCTS))}
+let SALES=JSON.parse(localStorage.getItem("sales"))||[];
+
+function save(){localStorage.setItem("products",JSON.stringify(PRODUCTS));
+localStorage.setItem("sales",JSON.stringify(SALES));}
 
 function render(){
- let pDiv=document.getElementById("products");
- pDiv.innerHTML="";
+ let d=document.getElementById("products");d.innerHTML="";
  PRODUCTS.forEach((p,i)=>{
-  if(filter!=="all" && p.cat!==filter) return;
-  let d=document.createElement("div");
-  d.className="product";
-  d.innerHTML=`${p.name}<br><span class="small">${p.price} DA – ${p.cat}</span>`;
-  d.onclick=()=>{cart.push(p);renderCart()};
-  d.oncontextmenu=e=>{
-    e.preventDefault();
-    if(confirm("Delete product?")){
-      PRODUCTS.splice(i,1);
-      save();render();
-    }
+  if(filter!=="all"&&p.cat!==filter)return;
+  let e=document.createElement("div");
+  e.className="product";
+  e.innerHTML=`${p.name}<br><span class="small">${p.price} DA – ${p.cat}</span>`;
+  e.onclick=()=>{cart.push({...p,time:new Date().toLocaleTimeString()});renderCart()};
+  e.oncontextmenu=x=>{
+    x.preventDefault();
+    if(confirm("Delete product?")){PRODUCTS.splice(i,1);save();render();}
   };
-  pDiv.appendChild(d);
+  d.appendChild(e);
  });
 }
 render();
 
-function filterCat(c){filter=c;render()}
+function filterCat(c){filter=c;render();}
 
 function addProduct(){
- let name=prompt("Product name");
- if(!name) return;
- let price=parseInt(prompt("Price DA"));
- if(isNaN(price)) return;
- let cat=prompt("Category (Drink/Food)");
- let code=prompt("Barcode (optional)")||"";
- PRODUCTS.push({name,price,cat,code});
- save();render();
+ let n=prompt("Name");if(!n)return;
+ let p=parseInt(prompt("Price DA"));if(isNaN(p))return;
+ let c=prompt("Category (Drink/Food)");
+ let b=prompt("Barcode (optional)")||"";
+ PRODUCTS.push({name:n,price:p,cat:c,code:b});save();render();
 }
 
 function renderCart(){
- let c=document.getElementById("cartItems");
- c.innerHTML="";
- let t=0;
+ let c=document.getElementById("cartItems"),t=0;c.innerHTML="";
  cart.forEach((p,i)=>{
   t+=p.price;
-  c.innerHTML+=`${p.name} - ${p.price} DA <span onclick="remove(${i})">✖</span><br>`;
+  c.innerHTML+=`${p.name} (${p.time}) - ${p.price} DA <span onclick="remove(${i})">✖</span><br>`;
  });
  document.getElementById("total").innerText=t;
 }
-function remove(i){cart.splice(i,1);renderCart()}
-function clearCart(){cart=[];renderCart()}
+function remove(i){cart.splice(i,1);renderCart();}
+function clearCart(){cart=[];renderCart();}
 
 function checkout(){
- if(cart.length==0) return;
- cart=[];renderCart();
+ if(!cart.length)return;
+ SALES.push({
+  admin:worker.value,
+  shift:shift.value,
+  date:new Date().toLocaleDateString(),
+  time:new Date().toLocaleTimeString(),
+  items:cart,
+  total:cart.reduce((a,b)=>a+b.price,0)
+ });
+ save();clearCart();
+}
+
+function openAdmin(){
+ if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
+ admin.classList.toggle("hidden");
+}
+
+function resetSales(){
+ if(confirm("Reset all sales?")){SALES=[];save();reports.innerHTML="";}
+}
+
+function showReport(type){
+ let now=new Date(),sum=0,count=0;
+ SALES.forEach(s=>{
+  let d=new Date(s.date);
+  if(type==="day"&&d.toDateString()!==now.toDateString())return;
+  if(type==="week"&&now-d>7*86400000)return;
+  if(type==="month"&&d.getMonth()!==now.getMonth())return;
+  if(type==="half"&&s.shift!==shift.value)return;
+  sum+=s.total;count++;
+ });
+ reports.innerHTML=`Orders: ${count}<br>Total: ${sum} DA`;
 }
 
 function startScan(){
  document.getElementById("scanner").classList.remove("hidden");
- const qr=new Html5Qrcode("scanner");
- qr.start({facingMode:"environment"},{fps:10,qrbox:250},
-  txt=>{
-   let p=PRODUCTS.find(x=>x.code===txt);
-   if(p){cart.push(p);renderCart();}
-   qr.stop();
-   document.getElementById("scanner").classList.add("hidden");
-  }
- );
+ const q=new Html5Qrcode("scanner");
+ q.start({facingMode:"environment"},{fps:10,qrbox:250},
+ t=>{
+  let p=PRODUCTS.find(x=>x.code===t);
+  if(p){cart.push({...p,time:new Date().toLocaleTimeString()});renderCart();}
+  q.stop();scanner.classList.add("hidden");
+ });
 }
 </script>
 
