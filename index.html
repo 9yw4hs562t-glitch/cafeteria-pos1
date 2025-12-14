@@ -12,8 +12,7 @@ body{margin:0;font-family:Arial;background:#f4f4f4}
 header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
 .container{padding:10px}
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-.product{background:#fff;padding:10px;border-radius:8px;
-box-shadow:0 2px 5px rgba(0,0,0,.1);position:relative}
+.product{background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,.1);position:relative}
 .menu{position:absolute;top:5px;right:5px;font-size:18px;cursor:pointer}
 .small{font-size:12px;color:#555}
 .cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
@@ -50,7 +49,8 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="green" onclick="filterCat('Food')">Food</button>
 </div>
 
-<button class="blue" onclick="startAddProduct()">➕ Add Product</button>
+<button class="blue" onclick="addProduct()">➕ Add Product</button>
+<button class="gray" onclick="startFastScan()">📷 Scan Product</button>
 
 <div id="scanner" class="hidden"></div>
 <div class="products" id="products"></div>
@@ -63,152 +63,96 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="red" onclick="clearCart()">✖ Clear</button>
 </div>
 
-<div class="panel">
-<input type="password" id="pin" placeholder="Admin PIN">
-<button class="gray" onclick="openAdmin()">🔐 Admin</button>
-
-<div id="admin" class="hidden">
-<h4>💰 Cash</h4>
-<input type="number" placeholder="Opening cash" onchange="setOpening(this.value)">
-<button class="blue" onclick="cashIn()">Cash In</button>
-<button class="red" onclick="cashOut()">Cash Out</button>
-<div id="cashInfo"></div>
-
-<h4>📊 Reports</h4>
-<button class="blue" onclick="exportExcel()">📥 Export Excel</button>
-<div id="reports"></div>
-</div>
-</div>
-
 </div>
 
 <script>
-const ADMIN_PIN="1234";
-let cart=[],filter="all";
+let PRODUCTS = JSON.parse(localStorage.getItem("products")) || [];
+let cart = [];
+let filter = "all";
 let SHIFT = localStorage.getItem("shift") || "Morning";
-
-let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[];
-let SALES=JSON.parse(localStorage.getItem("sales"))||[];
-let CASH=JSON.parse(localStorage.getItem("cash"))||{opening:0,in:0,out:0};
-
-shift.innerHTML=`<option>${SHIFT}</option>`;
+shift.innerHTML = `<option>${SHIFT}</option>`;
 
 function save(){
 localStorage.setItem("products",JSON.stringify(PRODUCTS));
-localStorage.setItem("sales",JSON.stringify(SALES));
-localStorage.setItem("cash",JSON.stringify(CASH));
 localStorage.setItem("shift",SHIFT);
 }
 
 function endShift(){
 SHIFT = SHIFT==="Morning" ? "Evening" : "Morning";
 shift.innerHTML=`<option>${SHIFT}</option>`;
-save();
-alert("Shift changed to "+SHIFT);
+save(); alert("Shift changed");
 }
+
+/* 🔊 Beep sound */
+const beep = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=");
 
 function render(){
 products.innerHTML="";
 PRODUCTS.forEach((p,i)=>{
-if(filter!=="all" && p.cat!==filter)return;
+if(filter!=="all" && p.cat!==filter) return;
 let d=document.createElement("div");
 d.className="product";
-d.innerHTML=`
-<div class="menu" onclick="productMenu(${i})">⋮</div>
-<b>${p.name}</b><br>
-<span class="small">${p.price} DA – ${p.cat}</span><br>
-<span class="small">Stock: ${p.stock}</span>`;
-d.onclick=()=>{
-if(p.stock<=0)return alert("Out of stock");
-p.stock--;
-cart.push({...p,time:new Date().toLocaleTimeString()});
-save();render();renderCart();
-};
+d.innerHTML=`<b>${p.name}</b><br>${p.price} DA<br>Stock: ${p.stock}`;
+d.onclick=()=>addToCart(i);
 products.appendChild(d);
 });
 }
 render();
 
-function productMenu(i){
-let c=prompt("1 = Modify\n2 = Delete");
-if(c==="1"){
-let n=prompt("Name",PRODUCTS[i].name);
-let p=parseInt(prompt("Price",PRODUCTS[i].price));
-let s=parseInt(prompt("Stock",PRODUCTS[i].stock));
-PRODUCTS[i].name=n;PRODUCTS[i].price=p;PRODUCTS[i].stock=s;
-}
-if(c==="2" && confirm("Delete product?"))PRODUCTS.splice(i,1);
-save();render();
-}
-
-function filterCat(c){filter=c;render();}
-
-function startAddProduct(){
-scanner.classList.remove("hidden");
-const qr=new Html5Qrcode("scanner");
-qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
-qr.stop();scanner.classList.add("hidden");
-let name=prompt("Product name");
-let price=parseInt(prompt("Price DA"));
-let cat=prompt("Category (Drink/Food)");
-let stock=parseInt(prompt("Initial stock"));
-PRODUCTS.push({name,price,cat,stock,code});
-save();render();
-});
+function addToCart(i){
+let p=PRODUCTS[i];
+if(p.stock<=0) return alert("Out of stock");
+p.stock--;
+cart.push({index:i,...p});
+beep.play();
+save(); render(); renderCart();
 }
 
 function renderCart(){
-cartItems.innerHTML=""; let t=0;
+cartItems.innerHTML="";
+let t=0;
 cart.forEach((p,i)=>{
 t+=p.price;
-cartItems.innerHTML+=`${p.name} (${p.time}) - ${p.price} DA <span onclick="cart.splice(${i},1);renderCart()">✖</span><br>`;
+cartItems.innerHTML+=`${p.name} - ${p.price} DA <span onclick="removeItem(${i})">✖</span><br>`;
 });
 total.innerText=t;
 }
 
-function clearCart(){cart=[];renderCart();}
+function removeItem(i){
+PRODUCTS[cart[i].index].stock++;
+cart.splice(i,1);
+save(); render(); renderCart();
+}
+
+function clearCart(){
+cart.forEach(i=>PRODUCTS[i.index].stock++);
+cart=[]; save(); render(); renderCart();
+}
 
 function checkout(){
-if(!cart.length)return;
-SALES.push({
-date:new Date().toLocaleDateString(),
-time:new Date().toLocaleTimeString(),
-shift:SHIFT,
-admin:worker.value,
-items:cart,
-total:cart.reduce((a,b)=>a+b.price,0)
-});
-save();clearCart();
+cart=[]; save(); renderCart();
 }
 
-function openAdmin(){
-if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
-admin.classList.toggle("hidden");
-renderCash();
+/* 📷 FAST SCAN MODE */
+let scanner;
+function startFastScan(){
+scanner=document.getElementById("scanner");
+scanner.classList.remove("hidden");
+
+const qr=new Html5Qrcode("scanner");
+qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+let matches = PRODUCTS.filter(p=>p.code===code);
+
+if(matches.length===0){
+alert("Product not found"); return;
+}
+if(matches.length>1){
+alert("Barcode conflict!"); return;
 }
 
-function setOpening(v){CASH.opening=parseInt(v)||0;save();renderCash();}
-function cashIn(){let v=parseInt(prompt("Cash in"));if(!isNaN(v)){CASH.in+=v;save();renderCash();}}
-function cashOut(){let v=parseInt(prompt("Cash out"));if(!isNaN(v)){CASH.out+=v;save();renderCash();}}
-
-function renderCash(){
-let salesTotal=SALES.reduce((a,b)=>a+b.total,0);
-let expected=CASH.opening+salesTotal+CASH.in-CASH.out;
-cashInfo.innerHTML=`Opening: ${CASH.opening} DA<br>In: ${CASH.in} DA<br>Out: ${CASH.out} DA<br>Expected: ${expected} DA`;
-}
-
-function exportExcel(){
-let csv="Date,Time,Shift,Admin,Product,Category,Price\n";
-SALES.forEach(s=>{
-s.items.forEach(i=>{
-csv+=`${s.date},${s.time},${s.shift},${s.admin},${i.name},${i.cat},${i.price}\n`;
+let index = PRODUCTS.findIndex(p=>p.code===code);
+addToCart(index);
 });
-});
-csv+="\nCASH\nOpening,"+CASH.opening+"\nIn,"+CASH.in+"\nOut,"+CASH.out;
-let a=document.createElement("a");
-a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-a.download="cafeteria_pos_all_data.csv";
-a.click();
 }
 </script>
 
