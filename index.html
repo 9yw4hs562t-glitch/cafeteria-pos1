@@ -124,9 +124,14 @@ const firebaseConfig={
 firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 
+/* GLOBALS */
 const ADMIN_PIN="5554";
 let PRODUCTS=[], SALES=[], cart=[];
 let scanSellOpen=false, scanAssignId=null, scannerInst=null;
+
+/* SCAN THROTTLE */
+let lastScanTime = 0;
+const SCAN_DELAY = 1000; // 1 scan / second
 
 /* SYNC */
 db.collection("products").onSnapshot(s=>{
@@ -248,7 +253,7 @@ function checkout(){
   renderCart();
 }
 
-/* SCAN SELL (ZOOM ×2) */
+/* SCAN SELL (ZOOM ×2 + 1 SCAN/SEC) */
 function toggleScanSell(){
   if(scanSellOpen){
     scannerInst.stop();
@@ -263,6 +268,10 @@ function toggleScanSell(){
     {facingMode:"environment"},
     {fps:10,qrbox:220,aspectRatio:1,advanced:[{zoom:2}]},
     code=>{
+      const now = Date.now();
+      if(now - lastScanTime < SCAN_DELAY) return;
+      lastScanTime = now;
+
       let p=PRODUCTS.find(x=>x.code===code);
       if(!p)return alert("Not found");
       addToCart(p.id);
@@ -271,7 +280,7 @@ function toggleScanSell(){
   scanSellOpen=true;
 }
 
-/* SCAN ASSIGN (ZOOM ×2) */
+/* SCAN ASSIGN (ZOOM ×2 + 1 SCAN/SEC) */
 function startScanAssign(){
   scanner.classList.remove("hidden");
   let qr=new Html5Qrcode("scanner");
@@ -279,6 +288,10 @@ function startScanAssign(){
     {facingMode:"environment"},
     {fps:10,qrbox:220,aspectRatio:1,advanced:[{zoom:2}]},
     code=>{
+      const now = Date.now();
+      if(now - lastScanTime < SCAN_DELAY) return;
+      lastScanTime = now;
+
       qr.stop();
       scanner.classList.add("hidden");
       let p=PRODUCTS.find(x=>x.id===scanAssignId);
