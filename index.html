@@ -28,16 +28,16 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </head>
 <body>
 
-<header>📊 Cafeteria POS</header>
+<header> CAFE LEGENDAIRE </header>
 
 <div class="container">
 
 <div class="panel">
 <select id="worker">
-<option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
+<option>ismat</option><option>ahmed</option><option>Admin 3</option>
 <option>Admin 4</option><option>Admin 5</option><option>Admin 6</option><option>Admin 7</option>
 </select>
-<select id="shift"><option>Morning</option><option>Evening</option></select>
+<select id="shift"><option>sbah</option><option>3chiya</option></select>
 </div>
 
 <h3>Products</h3>
@@ -85,7 +85,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </div>
 
 <script>
-const ADMIN_PIN="1234";
+const ADMIN_PIN="5554";
 let filter="all",cart=[];
 
 let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[
@@ -109,28 +109,44 @@ PRODUCTS.forEach((p,i)=>{
 if(filter!=="all"&&p.cat!==filter)return;
 let d=document.createElement("div");
 d.className="product";
-d.innerHTML=`${p.name}<br><span class="small">${p.price} DA – ${p.cat}</span><br><span class="small">Stock: ${p.stock}</span>`;
+d.innerHTML=`${p.name}<br>
+<span class="small">${p.price} DA – ${p.cat}</span><br>
+<span class="small">Stock: ${p.stock}</span>`;
+
 d.onclick=()=>{
 if(p.stock<=0)return alert("Out of stock");
 p.stock--;
 cart.push({...p,time:new Date().toLocaleTimeString()});
 save();render();renderCart();
 };
+
 d.oncontextmenu=e=>{
 e.preventDefault();
-if(confirm("Delete product?")){PRODUCTS.splice(i,1);save();render();}
+let c=prompt("1 = Add stock\n2 = Delete product");
+if(c==="1")restockProduct(i);
+if(c==="2" && confirm("Delete product?")){
+PRODUCTS.splice(i,1);save();render();
+}
 };
 products.appendChild(d);
 });
 }
 render();
 
+function restockProduct(i){
+let q=parseInt(prompt("Add stock quantity"));
+if(isNaN(q)||q<=0)return;
+PRODUCTS[i].stock+=q;
+save();render();
+}
+
 function filterCat(c){filter=c;render();}
+
 function addProduct(){
-let n=prompt("Name"); if(!n)return;
-let p=parseInt(prompt("Price")); if(isNaN(p))return;
+let n=prompt("Product name"); if(!n)return;
+let p=parseInt(prompt("Price DA")); if(isNaN(p))return;
 let c=prompt("Category (Drink/Food)");
-let s=parseInt(prompt("Stock")); if(isNaN(s))s=0;
+let s=parseInt(prompt("Initial stock")); if(isNaN(s))s=0;
 let b=prompt("Barcode (optional)")||"";
 PRODUCTS.push({name:n,price:p,cat:c,stock:s,code:b});
 save();render();
@@ -144,6 +160,7 @@ cartItems.innerHTML+=`${p.name} (${p.time}) - ${p.price} DA <span onclick="cart.
 });
 total.innerText=t;
 }
+
 function clearCart(){cart=[];renderCart();}
 
 function checkout(){
