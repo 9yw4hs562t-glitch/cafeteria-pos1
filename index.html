@@ -17,7 +17,7 @@ body::before{
   position:fixed;
   inset:0;
   background:url("IMG_0069.jpeg") center/cover no-repeat;
-  filter:blur(6px) brightness(0.9);
+  filter:blur(6px) brightness(.9);
   z-index:-1;
 }
 header{
@@ -37,15 +37,29 @@ header{
 }
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .product{position:relative}
+.menu{
+  position:absolute;
+  top:6px;
+  right:8px;
+  font-size:20px;
+  cursor:pointer;
+}
 button{
-  width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;
-  font-size:15px;color:#fff;cursor:pointer;
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  border:none;
+  border-radius:6px;
+  font-size:15px;
+  color:#fff;
+  cursor:pointer;
 }
 .green{background:#28a745}
 .red{background:#dc3545}
 .blue{background:#007bff}
 .gray{background:#6c757d}
 .hidden{display:none}
+#scanner{margin-top:10px}
 </style>
 </head>
 
@@ -66,14 +80,18 @@ button{
 <option>Admin 7</option>
 </select>
 
-<select id="shift"></select>
-<button class="gray" onclick="endShift()">⏱ End Shift</button>
+<select id="shift">
+<option>Morning</option>
+<option>Evening</option>
+</select>
 </div>
 
 <h3>Products</h3>
 
 <button class="blue" onclick="addProduct()">➕ Add Product</button>
+<button class="gray" onclick="toggleScanSell()">📷 Scan (Sell)</button>
 
+<div id="scanner" class="hidden"></div>
 <div class="products" id="products"></div>
 
 <div class="cart">
@@ -115,33 +133,28 @@ const db=firebase.firestore();
 
 const ADMIN_PIN="5554";
 let PRODUCTS=[], SALES=[], cart=[];
-let SHIFT="Morning";
-let shiftStartTime=new Date().toLocaleTimeString();
-let shiftEndTime="";
+let scanSellOpen=false, scanAssignId=null, scannerInst=null;
 
-shift.innerHTML=`<option>${SHIFT}</option>`;
-
+/* SYNC */
 db.collection("products").onSnapshot(s=>{
   PRODUCTS=s.docs.map(d=>({...d.data(),id:d.id}));
-  render();
+  renderProducts();
 });
 db.collection("sales").onSnapshot(s=>{
-  SALES=s.docs.map(d=>({...d.data(),id:d.id}));
+  SALES=s.docs.map(d=>d.data());
 });
 
-function endShift(){
-  shiftEndTime=new Date().toLocaleTimeString();
-  SHIFT=SHIFT==="Morning"?"Evening":"Morning";
-  shiftStartTime=new Date().toLocaleTimeString();
-  shift.innerHTML=`<option>${SHIFT}</option>`;
-}
-
-function render(){
+/* PRODUCTS */
+function renderProducts(){
   products.innerHTML="";
   PRODUCTS.forEach(p=>{
     let d=document.createElement("div");
     d.className="product";
-    d.innerHTML=`<b>${p.name}</b><br>${p.price} DA<br>Stock:${p.stock}`;
+    d.innerHTML=`
+      <div class="menu" onclick="productMenu('${p.id}')">⋮</div>
+      <b>${p.name}</b><br>
+      ${p.price} DA<br>
+      Stock: ${p.stock}`;
     d.onclick=()=>addToCart(p.id);
     products.appendChild(d);
   });
@@ -151,29 +164,72 @@ function addProduct(){
   let n=prompt("Name"); if(!n)return;
   let p=parseInt(prompt("Price")); if(isNaN(p))return;
   let s=parseInt(prompt("Stock"))||0;
-  db.collection("products").doc(n).set({name:n,price:p,stock:s});
+  db.collection("products").doc(n).set({name:n,price:p,stock:s,code:""});
 }
 
+/* PRODUCT MENU */
+function productMenu(id){
+  let p=PRODUCTS.find(x=>x.id===id);
+  let c=prompt("1 Modify\n2 Stock +/-\n3 Add barcode (scan)\n4 Delete");
+
+  if(c==="1"){
+    let n=prompt("Name",p.name);
+    let pr=parseInt(prompt("Price",p.price));
+    if(n)p.name=n;
+    if(!isNaN(pr))p.price=pr;
+  }
+
+  if(c==="2"){
+    let q=parseInt(prompt("Stock change (+/-)"));
+    if(!isNaN(q))p.stock=Math.max(0,p.stock+q);
+  }
+
+  if(c==="3"){
+    scanAssignId=id;
+    startScanAssign();
+    return;
+  }
+
+  if(c==="4"){
+    if(confirm("Delete product?")){
+      db.collection("products").doc(id).delete();
+      return;
+    }
+  }
+
+  db.collection("products").doc(id).set(p);
+}
+
+/* CART */
 function addToCart(id){
   let p=PRODUCTS.find(x=>x.id===id);
-  if(p.stock<=0)return;
-  p.stock--;db.collection("products").doc(id).set(p);
-  cart.push(p);renderCart();
+  if(p.stock<=0)return alert("Out of stock");
+  p.stock--;
+  db.collection("products").doc(id).set(p);
+  cart.push(p);
+  renderCart();
 }
 
 function renderCart(){
-  cartItems.innerHTML="";let t=0;
-  cart.forEach(p=>{t+=p.price;
-    cartItems.innerHTML+=`${p.name} ${p.price} DA<br>`;
+  cartItems.innerHTML="";
+  let t=0;
+  cart.forEach(p=>{
+    t+=p.price;
+    cartItems.innerHTML+=`${p.name} - ${p.price} DA<br>`;
   });
   total.innerText=t;
 }
 
 function clearCart(){
-  cart.forEach(p=>{p.stock++;db.collection("products").doc(p.id).set(p);});
-  cart=[];renderCart();
+  cart.forEach(p=>{
+    p.stock++;
+    db.collection("products").doc(p.id).set(p);
+  });
+  cart=[];
+  renderCart();
 }
 
+/* CHECKOUT */
 function checkout(){
   if(!cart.length)return;
 
@@ -188,16 +244,50 @@ function checkout(){
   }));
 
   db.collection("sales").add({
-    shift:SHIFT,
-    shiftStart:shiftStartTime,
+    shift:shift.value,
     admin:worker.value,
     total:cart.reduce((a,b)=>a+b.price,0),
-    items:items
+    items:items,
+    time:new Date().toLocaleTimeString()
   });
 
-  cart=[];renderCart();
+  cart=[];
+  renderCart();
 }
 
+/* SCAN SELL */
+function toggleScanSell(){
+  if(scanSellOpen){
+    scannerInst.stop();
+    scanner.classList.add("hidden");
+    scanSellOpen=false;
+    return;
+  }
+
+  scanner.classList.remove("hidden");
+  scannerInst=new Html5Qrcode("scanner");
+  scannerInst.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    let p=PRODUCTS.find(x=>x.code===code);
+    if(!p)return alert("Not found");
+    addToCart(p.id);
+  });
+  scanSellOpen=true;
+}
+
+/* SCAN ASSIGN */
+function startScanAssign(){
+  scanner.classList.remove("hidden");
+  let qr=new Html5Qrcode("scanner");
+  qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+    qr.stop();
+    scanner.classList.add("hidden");
+    let p=PRODUCTS.find(x=>x.id===scanAssignId);
+    p.code=code;
+    db.collection("products").doc(p.id).set(p);
+  });
+}
+
+/* ADMIN */
 function openAdmin(){
   if(pin.value!==ADMIN_PIN)return alert("Wrong PIN");
   admin.classList.toggle("hidden");
@@ -215,24 +305,22 @@ function showShiftReport(shiftName){
 
   let html=`<b>${shiftName} shift</b><br>`;
   Object.keys(stats).forEach(p=>{
-    html+=`${p} : ${stats[p]} units<br>`;
+    html+=`${p}: ${stats[p]} units<br>`;
   });
   html+=`<br><b>Total: ${total} DA</b>`;
   reports.innerHTML=html;
 }
 
 function exportExcel(){
-  let csv="Shift,Shift Start,Shift End,User,Product,Units,Total (DA)\n";
-
+  let csv="Product,Units,Shift\n";
   SALES.forEach(s=>{
     s.items.forEach(i=>{
-      csv+=`${s.shift},${s.shiftStart || ""},${shiftEndTime},${s.admin},${i.name},${i.qty},${s.total}\n`;
+      csv+=`${i.name},${i.qty},${s.shift}\n`;
     });
   });
-
   let a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-  a.download="CAFE_LEGENDAIRE_SHIFT_REPORT.csv";
+  a.download="CAFE_LEGENDAIRE_REPORT.csv";
   a.click();
 }
 
@@ -240,9 +328,6 @@ function cleanPOS(){
   if(!confirm("Delete all sales?"))return;
   db.collection("sales").get().then(snap=>snap.forEach(d=>d.ref.delete()));
   reports.innerHTML="";
-  SHIFT="Morning";
-  shiftStartTime=new Date().toLocaleTimeString();
-  shift.innerHTML=`<option>${SHIFT}</option>`;
   alert("POS cleaned");
 }
 </script>
