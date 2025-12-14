@@ -6,13 +6,15 @@
 <title>Cafeteria POS</title>
 <meta name="theme-color" content="#222">
 <script src="https://unpkg.com/html5-qrcode"></script>
+
 <style>
 body{margin:0;font-family:Arial;background:#f4f4f4}
 header{background:#222;color:#fff;padding:12px;text-align:center;font-size:18px}
 .container{padding:10px}
 .products{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
-.product{background:#fff;padding:12px;border-radius:8px;
-box-shadow:0 2px 5px rgba(0,0,0,.1);font-weight:bold;text-align:center}
+.product{background:#fff;padding:10px;border-radius:8px;
+box-shadow:0 2px 5px rgba(0,0,0,.1);position:relative}
+.menu{position:absolute;top:5px;right:5px;font-size:18px;cursor:pointer}
 .small{font-size:12px;color:#555}
 .cart,.panel{background:#fff;margin-top:15px;padding:10px;border-radius:8px}
 button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font-size:15px;color:#fff}
@@ -28,16 +30,17 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </head>
 <body>
 
-<header> CAFE LEGENDAIRE </header>
+<header>📊 Cafeteria POS</header>
 
 <div class="container">
 
 <div class="panel">
 <select id="worker">
-<option>ismat</option><option>ahmed</option><option>Admin 3</option>
+<option>Admin 1</option><option>Admin 2</option><option>Admin 3</option>
 <option>Admin 4</option><option>Admin 5</option><option>Admin 6</option><option>Admin 7</option>
 </select>
-<select id="shift"><option>sbah</option><option>3chiya</option></select>
+<select id="shift"></select>
+<button class="gray" onclick="endShift()">⏱ End Shift</button>
 </div>
 
 <h3>Products</h3>
@@ -47,8 +50,7 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="green" onclick="filterCat('Food')">Food</button>
 </div>
 
-<button class="blue" onclick="addProduct()">➕ Add Product</button>
-<button class="gray" onclick="startScan()">📷 Scan Barcode</button>
+<button class="blue" onclick="startAddProduct()">➕ Add Product</button>
 
 <div id="scanner" class="hidden"></div>
 <div class="products" id="products"></div>
@@ -66,17 +68,13 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 <button class="gray" onclick="openAdmin()">🔐 Admin</button>
 
 <div id="admin" class="hidden">
-<h4>💰 Cash Management</h4>
+<h4>💰 Cash</h4>
 <input type="number" placeholder="Opening cash" onchange="setOpening(this.value)">
 <button class="blue" onclick="cashIn()">Cash In</button>
 <button class="red" onclick="cashOut()">Cash Out</button>
 <div id="cashInfo"></div>
 
 <h4>📊 Reports</h4>
-<button class="blue" onclick="report('half')">Half-Day</button>
-<button class="blue" onclick="report('day')">Day</button>
-<button class="blue" onclick="report('week')">Week</button>
-<button class="blue" onclick="report('month')">Month</button>
 <button class="blue" onclick="exportExcel()">📥 Export Excel</button>
 <div id="reports"></div>
 </div>
@@ -85,71 +83,78 @@ button{width:100%;padding:10px;margin-top:6px;border:none;border-radius:6px;font
 </div>
 
 <script>
-const ADMIN_PIN="5554";
-let filter="all",cart=[];
+const ADMIN_PIN="1234";
+let cart=[],filter="all";
+let SHIFT = localStorage.getItem("shift") || "Morning";
 
-let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[
-{name:"Coffee",price:30,cat:"Drink",stock:50,code:"111"},
-{name:"Tea",price:40,cat:"Drink",stock:50,code:"222"},
-{name:"Sandwich",price:200,cat:"Food",stock:30,code:"333"}
-];
-
+let PRODUCTS=JSON.parse(localStorage.getItem("products"))||[];
 let SALES=JSON.parse(localStorage.getItem("sales"))||[];
 let CASH=JSON.parse(localStorage.getItem("cash"))||{opening:0,in:0,out:0};
+
+shift.innerHTML=`<option>${SHIFT}</option>`;
 
 function save(){
 localStorage.setItem("products",JSON.stringify(PRODUCTS));
 localStorage.setItem("sales",JSON.stringify(SALES));
 localStorage.setItem("cash",JSON.stringify(CASH));
+localStorage.setItem("shift",SHIFT);
+}
+
+function endShift(){
+SHIFT = SHIFT==="Morning" ? "Evening" : "Morning";
+shift.innerHTML=`<option>${SHIFT}</option>`;
+save();
+alert("Shift changed to "+SHIFT);
 }
 
 function render(){
 products.innerHTML="";
 PRODUCTS.forEach((p,i)=>{
-if(filter!=="all"&&p.cat!==filter)return;
+if(filter!=="all" && p.cat!==filter)return;
 let d=document.createElement("div");
 d.className="product";
-d.innerHTML=`${p.name}<br>
+d.innerHTML=`
+<div class="menu" onclick="productMenu(${i})">⋮</div>
+<b>${p.name}</b><br>
 <span class="small">${p.price} DA – ${p.cat}</span><br>
 <span class="small">Stock: ${p.stock}</span>`;
-
 d.onclick=()=>{
 if(p.stock<=0)return alert("Out of stock");
 p.stock--;
 cart.push({...p,time:new Date().toLocaleTimeString()});
 save();render();renderCart();
 };
-
-d.oncontextmenu=e=>{
-e.preventDefault();
-let c=prompt("1 = Add stock\n2 = Delete product");
-if(c==="1")restockProduct(i);
-if(c==="2" && confirm("Delete product?")){
-PRODUCTS.splice(i,1);save();render();
-}
-};
 products.appendChild(d);
 });
 }
 render();
 
-function restockProduct(i){
-let q=parseInt(prompt("Add stock quantity"));
-if(isNaN(q)||q<=0)return;
-PRODUCTS[i].stock+=q;
+function productMenu(i){
+let c=prompt("1 = Modify\n2 = Delete");
+if(c==="1"){
+let n=prompt("Name",PRODUCTS[i].name);
+let p=parseInt(prompt("Price",PRODUCTS[i].price));
+let s=parseInt(prompt("Stock",PRODUCTS[i].stock));
+PRODUCTS[i].name=n;PRODUCTS[i].price=p;PRODUCTS[i].stock=s;
+}
+if(c==="2" && confirm("Delete product?"))PRODUCTS.splice(i,1);
 save();render();
 }
 
 function filterCat(c){filter=c;render();}
 
-function addProduct(){
-let n=prompt("Product name"); if(!n)return;
-let p=parseInt(prompt("Price DA")); if(isNaN(p))return;
-let c=prompt("Category (Drink/Food)");
-let s=parseInt(prompt("Initial stock")); if(isNaN(s))s=0;
-let b=prompt("Barcode (optional)")||"";
-PRODUCTS.push({name:n,price:p,cat:c,stock:s,code:b});
+function startAddProduct(){
+scanner.classList.remove("hidden");
+const qr=new Html5Qrcode("scanner");
+qr.start({facingMode:"environment"},{fps:10,qrbox:250},code=>{
+qr.stop();scanner.classList.add("hidden");
+let name=prompt("Product name");
+let price=parseInt(prompt("Price DA"));
+let cat=prompt("Category (Drink/Food)");
+let stock=parseInt(prompt("Initial stock"));
+PRODUCTS.push({name,price,cat,stock,code});
 save();render();
+});
 }
 
 function renderCart(){
@@ -166,10 +171,12 @@ function clearCart(){cart=[];renderCart();}
 function checkout(){
 if(!cart.length)return;
 SALES.push({
-admin:worker.value,shift:shift.value,
 date:new Date().toLocaleDateString(),
 time:new Date().toLocaleTimeString(),
-items:cart,total:cart.reduce((a,b)=>a+b.price,0)
+shift:SHIFT,
+admin:worker.value,
+items:cart,
+total:cart.reduce((a,b)=>a+b.price,0)
 });
 save();clearCart();
 }
@@ -181,8 +188,8 @@ renderCash();
 }
 
 function setOpening(v){CASH.opening=parseInt(v)||0;save();renderCash();}
-function cashIn(){let v=parseInt(prompt("Cash in")); if(!isNaN(v)){CASH.in+=v;save();renderCash();}}
-function cashOut(){let v=parseInt(prompt("Cash out")); if(!isNaN(v)){CASH.out+=v;save();renderCash();}}
+function cashIn(){let v=parseInt(prompt("Cash in"));if(!isNaN(v)){CASH.in+=v;save();renderCash();}}
+function cashOut(){let v=parseInt(prompt("Cash out"));if(!isNaN(v)){CASH.out+=v;save();renderCash();}}
 
 function renderCash(){
 let salesTotal=SALES.reduce((a,b)=>a+b.total,0);
@@ -190,40 +197,18 @@ let expected=CASH.opening+salesTotal+CASH.in-CASH.out;
 cashInfo.innerHTML=`Opening: ${CASH.opening} DA<br>In: ${CASH.in} DA<br>Out: ${CASH.out} DA<br>Expected: ${expected} DA`;
 }
 
-function report(type){
-let now=new Date(),sum=0,count=0;
-SALES.forEach(s=>{
-let d=new Date(s.date);
-if(type==="half"&&s.shift!==shift.value)return;
-if(type==="day"&&d.toDateString()!==now.toDateString())return;
-if(type==="week"&&now-d>7*86400000)return;
-if(type==="month"&&d.getMonth()!==now.getMonth())return;
-sum+=s.total;count++;
-});
-reports.innerHTML=`Orders: ${count}<br>Total: ${sum} DA`;
-}
-
 function exportExcel(){
-let csv="Date,Time,Admin,Shift,Product,Category,Price\n";
+let csv="Date,Time,Shift,Admin,Product,Category,Price\n";
 SALES.forEach(s=>{
 s.items.forEach(i=>{
-csv+=`${s.date},${s.time},${s.admin},${s.shift},${i.name},${i.cat},${i.price}\n`;
+csv+=`${s.date},${s.time},${s.shift},${s.admin},${i.name},${i.cat},${i.price}\n`;
 });
 });
 csv+="\nCASH\nOpening,"+CASH.opening+"\nIn,"+CASH.in+"\nOut,"+CASH.out;
 let a=document.createElement("a");
 a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
-a.download="cafeteria_report.csv";a.click();
-}
-
-function startScan(){
-scanner.classList.remove("hidden");
-const q=new Html5Qrcode("scanner");
-q.start({facingMode:"environment"},{fps:10,qrbox:250},txt=>{
-let p=PRODUCTS.find(x=>x.code===txt);
-if(p){cart.push({...p,time:new Date().toLocaleTimeString()});renderCart();}
-q.stop();scanner.classList.add("hidden");
-});
+a.download="cafeteria_pos_all_data.csv";
+a.click();
 }
 </script>
 
